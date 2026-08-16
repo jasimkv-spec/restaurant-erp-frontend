@@ -141,7 +141,7 @@ export default function Layout({ children }: { children: ReactNode }) {
                           className={({ isActive }) =>
                             `flex items-center gap-2 rounded-lg px-2 py-1.5 text-[13px] ${
                               isActive
-                                ? "bg-navy-700 font-medium text-white"
+                                ? "bg-navy-700 font-medium text-brand-500"
                                 : "text-navy-50 hover:bg-navy-700 hover:text-white"
                             }`
                           }
