@@ -9,6 +9,16 @@ import Warehouses from "./pages/setup/Warehouses";
 import CostCentres from "./pages/setup/CostCentres";
 import ProfitCentres from "./pages/setup/ProfitCentres";
 import FinancialPeriods from "./pages/setup/FinancialPeriods";
+import Currencies from "./pages/masters/Currencies";
+import Countries from "./pages/masters/Countries";
+import Cities from "./pages/masters/Cities";
+import Areas from "./pages/masters/Areas";
+import Banks from "./pages/masters/Banks";
+import Taxes from "./pages/masters/Taxes";
+import Uoms from "./pages/masters/Uoms";
+import UomConversions from "./pages/masters/UomConversions";
+import PaymentTerms from "./pages/masters/PaymentTerms";
+import PaymentMethods from "./pages/masters/PaymentMethods";
 
 function RequireAuth({ children }: { children: ReactNode }) {
   const { isAuthenticated } = useAuth();
@@ -29,6 +39,17 @@ export default function App() {
           <Route path="/setup/cost-centres" element={<RequireAuth><CostCentres /></RequireAuth>} />
           <Route path="/setup/profit-centres" element={<RequireAuth><ProfitCentres /></RequireAuth>} />
           <Route path="/setup/financial-periods" element={<RequireAuth><FinancialPeriods /></RequireAuth>} />
+
+          <Route path="/masters/currencies" element={<RequireAuth><Currencies /></RequireAuth>} />
+          <Route path="/masters/countries" element={<RequireAuth><Countries /></RequireAuth>} />
+          <Route path="/masters/cities" element={<RequireAuth><Cities /></RequireAuth>} />
+          <Route path="/masters/areas" element={<RequireAuth><Areas /></RequireAuth>} />
+          <Route path="/masters/banks" element={<RequireAuth><Banks /></RequireAuth>} />
+          <Route path="/masters/taxes" element={<RequireAuth><Taxes /></RequireAuth>} />
+          <Route path="/masters/uoms" element={<RequireAuth><Uoms /></RequireAuth>} />
+          <Route path="/masters/uom-conversions" element={<RequireAuth><UomConversions /></RequireAuth>} />
+          <Route path="/masters/payment-terms" element={<RequireAuth><PaymentTerms /></RequireAuth>} />
+          <Route path="/masters/payment-methods" element={<RequireAuth><PaymentMethods /></RequireAuth>} />
 
           <Route path="/" element={<Navigate to="/setup/companies" replace />} />
           <Route path="*" element={<Navigate to="/setup/companies" replace />} />
