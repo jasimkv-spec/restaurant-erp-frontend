@@ -20,6 +20,8 @@ import Uoms from "./pages/masters/Uoms";
 import UomConversions from "./pages/masters/UomConversions";
 import PaymentTerms from "./pages/masters/PaymentTerms";
 import PaymentMethods from "./pages/masters/PaymentMethods";
+import Vendors from "./pages/procurement/Vendors";
+import Customers from "./pages/sales/Customers";
 
 function RequireAuth({ children }: { children: ReactNode }) {
   const { isAuthenticated } = useAuth();
@@ -52,6 +54,9 @@ export default function App() {
           <Route path="/masters/uom-conversions" element={<RequireAuth><UomConversions /></RequireAuth>} />
           <Route path="/masters/payment-terms" element={<RequireAuth><PaymentTerms /></RequireAuth>} />
           <Route path="/masters/payment-methods" element={<RequireAuth><PaymentMethods /></RequireAuth>} />
+
+          <Route path="/procurement/vendors" element={<RequireAuth><Vendors /></RequireAuth>} />
+          <Route path="/sales/customers" element={<RequireAuth><Customers /></RequireAuth>} />
 
           <Route path="/" element={<Navigate to="/setup/companies" replace />} />
           <Route path="*" element={<Navigate to="/setup/companies" replace />} />

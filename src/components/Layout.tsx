@@ -28,6 +28,8 @@ import {
   CalendarClock,
   CreditCard,
   Layers,
+  Users,
+  Handshake,
 } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import { getTenantCode } from "../lib/apiClient";
@@ -84,8 +86,18 @@ const NAV: NavGroup[] = [
     ],
   },
   { key: "inventory", label: "Inventory", icon: LayoutGrid, items: [], comingSoon: true },
-  { key: "procurement", label: "Procurement", icon: Truck, items: [], comingSoon: true },
-  { key: "sales", label: "Sales", icon: ShoppingCart, items: [], comingSoon: true },
+  {
+    key: "procurement",
+    label: "Procurement",
+    icon: Truck,
+    items: [{ label: "Vendors", path: "/procurement/vendors", icon: Handshake }],
+  },
+  {
+    key: "sales",
+    label: "Sales",
+    icon: ShoppingCart,
+    items: [{ label: "Customers", path: "/sales/customers", icon: Users }],
+  },
   { key: "accounting", label: "Accounting", icon: Wallet, items: [], comingSoon: true },
   { key: "workflow", label: "Workflow and approvals", icon: ClipboardList, items: [], comingSoon: true },
   { key: "reports", label: "Reports", icon: BarChart3, items: [], comingSoon: true },
