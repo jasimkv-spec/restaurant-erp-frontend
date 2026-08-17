@@ -27,6 +27,7 @@ import {
   ArrowLeftRight,
   CalendarClock,
   CreditCard,
+  Layers,
 } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import { getTenantCode } from "../lib/apiClient";
@@ -75,6 +76,7 @@ const NAV: NavGroup[] = [
       { label: "Areas", path: "/masters/areas", icon: MapPin },
       { label: "Banks", path: "/masters/banks", icon: Landmark },
       { label: "Taxes", path: "/masters/taxes", icon: Percent },
+      { label: "Tax groups", path: "/masters/tax-groups", icon: Layers },
       { label: "Units of measure", path: "/masters/uoms", icon: Ruler },
       { label: "UOM conversions", path: "/masters/uom-conversions", icon: ArrowLeftRight },
       { label: "Payment terms", path: "/masters/payment-terms", icon: CalendarClock },

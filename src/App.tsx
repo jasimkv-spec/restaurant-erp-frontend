@@ -15,6 +15,7 @@ import Cities from "./pages/masters/Cities";
 import Areas from "./pages/masters/Areas";
 import Banks from "./pages/masters/Banks";
 import Taxes from "./pages/masters/Taxes";
+import TaxGroups from "./pages/masters/TaxGroups";
 import Uoms from "./pages/masters/Uoms";
 import UomConversions from "./pages/masters/UomConversions";
 import PaymentTerms from "./pages/masters/PaymentTerms";
@@ -46,6 +47,7 @@ export default function App() {
           <Route path="/masters/areas" element={<RequireAuth><Areas /></RequireAuth>} />
           <Route path="/masters/banks" element={<RequireAuth><Banks /></RequireAuth>} />
           <Route path="/masters/taxes" element={<RequireAuth><Taxes /></RequireAuth>} />
+          <Route path="/masters/tax-groups" element={<RequireAuth><TaxGroups /></RequireAuth>} />
           <Route path="/masters/uoms" element={<RequireAuth><Uoms /></RequireAuth>} />
           <Route path="/masters/uom-conversions" element={<RequireAuth><UomConversions /></RequireAuth>} />
           <Route path="/masters/payment-terms" element={<RequireAuth><PaymentTerms /></RequireAuth>} />

@@ -76,7 +76,10 @@ async function request<T>(method: string, path: string, body?: unknown, opts?: {
     body: body !== undefined ? JSON.stringify(body) : undefined,
   });
 
-  const text = await res.text();
+  // DELETE endpoints (e.g. removing a tax from a tax group) return 204 No
+  // Content, so there's no body to parse - only try for methods/statuses
+  // that might actually have one.
+  const text = res.status === 204 ? "" : await res.text();
   const json = text ? JSON.parse(text) : null;
 
   if (!res.ok) {
@@ -97,6 +100,7 @@ export const api = {
   get: <T>(path: string) => request<T>("GET", path),
   post: <T>(path: string, body?: unknown) => request<T>("POST", path, body),
   put: <T>(path: string, body?: unknown) => request<T>("PUT", path, body),
+  del: <T>(path: string) => request<T>("DELETE", path),
   login: (email: string, password: string) =>
     request<{ token: string; user: AuthedUser }>("POST", "/auth/login", { email, password }, { auth: false }),
 };
