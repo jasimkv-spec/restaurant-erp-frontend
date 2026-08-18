@@ -21,7 +21,7 @@ export default function Customers() {
         { key: "status", label: "Status" },
       ]}
       formFields={[
-        { key: "code", label: "Code", type: "text", required: true },
+        { key: "code", label: "Code", type: "text", placeholder: "Leave blank to auto-generate, e.g. CUS0001" },
         { key: "name", label: "Name", type: "text", required: true },
         {
           key: "customerType",

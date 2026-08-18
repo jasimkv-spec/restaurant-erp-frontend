@@ -21,7 +21,7 @@ export default function Vendors() {
         { key: "status", label: "Status" },
       ]}
       formFields={[
-        { key: "code", label: "Code", type: "text", required: true },
+        { key: "code", label: "Code", type: "text", placeholder: "Leave blank to auto-generate, e.g. SUP0001" },
         { key: "name", label: "Name", type: "text", required: true },
         { key: "contactPerson", label: "Contact person", type: "text" },
         { key: "phone", label: "Phone", type: "text" },

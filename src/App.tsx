@@ -9,6 +9,9 @@ import Warehouses from "./pages/setup/Warehouses";
 import CostCentres from "./pages/setup/CostCentres";
 import ProfitCentres from "./pages/setup/ProfitCentres";
 import FinancialPeriods from "./pages/setup/FinancialPeriods";
+import DocumentSeries from "./pages/setup/DocumentSeries";
+import MasterSeries from "./pages/setup/MasterSeries";
+import CompanyPolicies from "./pages/setup/CompanyPolicies";
 import Currencies from "./pages/masters/Currencies";
 import Countries from "./pages/masters/Countries";
 import Cities from "./pages/masters/Cities";
@@ -42,6 +45,9 @@ export default function App() {
           <Route path="/setup/cost-centres" element={<RequireAuth><CostCentres /></RequireAuth>} />
           <Route path="/setup/profit-centres" element={<RequireAuth><ProfitCentres /></RequireAuth>} />
           <Route path="/setup/financial-periods" element={<RequireAuth><FinancialPeriods /></RequireAuth>} />
+          <Route path="/setup/document-series" element={<RequireAuth><DocumentSeries /></RequireAuth>} />
+          <Route path="/setup/master-series" element={<RequireAuth><MasterSeries /></RequireAuth>} />
+          <Route path="/setup/company-policies" element={<RequireAuth><CompanyPolicies /></RequireAuth>} />
 
           <Route path="/masters/currencies" element={<RequireAuth><Currencies /></RequireAuth>} />
           <Route path="/masters/countries" element={<RequireAuth><Countries /></RequireAuth>} />

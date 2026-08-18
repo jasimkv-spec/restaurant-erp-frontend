@@ -30,6 +30,9 @@ import {
   Layers,
   Users,
   Handshake,
+  Hash,
+  ListOrdered,
+  SlidersHorizontal,
 } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import { getTenantCode } from "../lib/apiClient";
@@ -65,6 +68,9 @@ const NAV: NavGroup[] = [
       { label: "Cost centres", path: "/setup/cost-centres", icon: Receipt },
       { label: "Profit centres", path: "/setup/profit-centres", icon: PieChart },
       { label: "Financial periods", path: "/setup/financial-periods", icon: Calendar },
+      { label: "Document series", path: "/setup/document-series", icon: Hash },
+      { label: "Master series", path: "/setup/master-series", icon: ListOrdered },
+      { label: "Company policies", path: "/setup/company-policies", icon: SlidersHorizontal },
     ],
   },
   {
