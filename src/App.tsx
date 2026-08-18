@@ -25,6 +25,7 @@ import PaymentTerms from "./pages/masters/PaymentTerms";
 import PaymentMethods from "./pages/masters/PaymentMethods";
 import Vendors from "./pages/procurement/Vendors";
 import Customers from "./pages/sales/Customers";
+import DocumentTypes from "./pages/workflow/DocumentTypes";
 
 function RequireAuth({ children }: { children: ReactNode }) {
   const { isAuthenticated } = useAuth();
@@ -63,6 +64,7 @@ export default function App() {
 
           <Route path="/procurement/vendors" element={<RequireAuth><Vendors /></RequireAuth>} />
           <Route path="/sales/customers" element={<RequireAuth><Customers /></RequireAuth>} />
+          <Route path="/workflow/document-types" element={<RequireAuth><DocumentTypes /></RequireAuth>} />
 
           <Route path="/" element={<Navigate to="/setup/companies" replace />} />
           <Route path="*" element={<Navigate to="/setup/companies" replace />} />

@@ -33,6 +33,7 @@ import {
   Hash,
   ListOrdered,
   SlidersHorizontal,
+  FileText,
 } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import { getTenantCode } from "../lib/apiClient";
@@ -105,7 +106,12 @@ const NAV: NavGroup[] = [
     items: [{ label: "Customers", path: "/sales/customers", icon: Users }],
   },
   { key: "accounting", label: "Accounting", icon: Wallet, items: [], comingSoon: true },
-  { key: "workflow", label: "Workflow and approvals", icon: ClipboardList, items: [], comingSoon: true },
+  {
+    key: "workflow",
+    label: "Workflow and approvals",
+    icon: ClipboardList,
+    items: [{ label: "Document types", path: "/workflow/document-types", icon: FileText }],
+  },
   { key: "reports", label: "Reports", icon: BarChart3, items: [], comingSoon: true },
   { key: "admin", label: "Security and admin", icon: ShieldCheck, items: [], comingSoon: true },
 ];

@@ -96,11 +96,62 @@ export interface ListResponse<T> {
   total: number;
 }
 
+// Multipart upload (file attachments) - deliberately not routed through
+// request() above since that always sets Content-Type: application/json
+// and JSON.stringifies the body. The browser sets the multipart boundary
+// header itself when given a FormData body, so Content-Type is omitted here.
+async function postForm<T>(path: string, formData: FormData): Promise<T> {
+  const headers: Record<string, string> = { "X-Tenant-Code": getTenantCode() };
+  const token = getToken();
+  if (token) headers.Authorization = `Bearer ${token}`;
+
+  const res = await fetch(`${getBaseUrl()}${path}`, { method: "POST", headers, body: formData });
+  const text = res.status === 204 ? "" : await res.text();
+  const json = text ? JSON.parse(text) : null;
+  if (!res.ok) {
+    const message = json?.error ?? `Request failed with status ${res.status}`;
+    throw new ApiError(res.status, message, json?.details);
+  }
+  return json as T;
+}
+
+// Downloads a file endpoint that requires the same auth headers as every
+// other API call (so a plain <a href> won't work - the browser wouldn't
+// attach the Authorization header). Fetches the bytes, then hands them to
+// the browser's normal save-file flow via a throwaway object URL/anchor.
+async function downloadFile(path: string, fallbackFileName: string): Promise<void> {
+  const headers: Record<string, string> = { "X-Tenant-Code": getTenantCode() };
+  const token = getToken();
+  if (token) headers.Authorization = `Bearer ${token}`;
+
+  const res = await fetch(`${getBaseUrl()}${path}`, { method: "GET", headers });
+  if (!res.ok) {
+    const text = await res.text();
+    const json = text ? JSON.parse(text) : null;
+    throw new ApiError(res.status, json?.error ?? `Download failed with status ${res.status}`, json?.details);
+  }
+  const disposition = res.headers.get("Content-Disposition") ?? "";
+  const match = disposition.match(/filename="?([^"]+)"?/);
+  const fileName = match?.[1] ?? fallbackFileName;
+
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = fileName;
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  URL.revokeObjectURL(url);
+}
+
 export const api = {
   get: <T>(path: string) => request<T>("GET", path),
   post: <T>(path: string, body?: unknown) => request<T>("POST", path, body),
   put: <T>(path: string, body?: unknown) => request<T>("PUT", path, body),
   del: <T>(path: string) => request<T>("DELETE", path),
+  postForm,
+  downloadFile,
   login: (email: string, password: string) =>
     request<{ token: string; user: AuthedUser }>("POST", "/auth/login", { email, password }, { auth: false }),
 };

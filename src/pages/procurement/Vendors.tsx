@@ -13,6 +13,7 @@ export default function Vendors() {
       title="Vendors"
       description="Suppliers you buy from. The currency here is what your POs and invoices default to for this vendor - amounts still get converted to the company's base currency for the books."
       basePath="/api/procurement/vendors"
+      attachments={{ moduleCode: "Procurement.Vendor" }}
       columns={[
         { key: "code", label: "Code" },
         { key: "name", label: "Name" },

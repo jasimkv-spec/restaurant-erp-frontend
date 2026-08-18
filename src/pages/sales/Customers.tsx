@@ -13,6 +13,7 @@ export default function Customers() {
       title="Customers"
       description="Who you sell to. The currency here is what sales quotes and invoices default to for this customer - amounts still get converted to the company's base currency for the books."
       basePath="/api/sales/customers"
+      attachments={{ moduleCode: "Sales.Customer" }}
       columns={[
         { key: "code", label: "Code" },
         { key: "name", label: "Name" },

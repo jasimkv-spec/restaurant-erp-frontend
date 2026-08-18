@@ -1,6 +1,7 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { ArrowLeft, ChevronRight, Plus } from "lucide-react";
 import { api, ApiError, type ListResponse } from "../lib/apiClient";
+import { DocumentAttachments } from "./DocumentAttachments";
 
 export interface CrudColumn<T> {
   key: string;
@@ -25,6 +26,8 @@ interface CrudTableProps<T extends Record<string, any>> {
   formFields: CrudFormField[];
   /** Called after a successful create/update, e.g. to refresh a dependent dropdown elsewhere on the page. */
   onChanged?: () => void;
+  /** Enables the upload/list/download/delete Attachments panel on the edit screen (new records must be saved first - see DocumentAttachments.tsx). */
+  attachments?: { moduleCode: string };
 }
 
 function statusPill(status: string) {
@@ -54,6 +57,7 @@ export function CrudTable<T extends Record<string, any>>({
   columns,
   formFields,
   onChanged,
+  attachments,
 }: CrudTableProps<T>) {
   const [rows, setRows] = useState<T[]>([]);
   const [loading, setLoading] = useState(true);
@@ -209,6 +213,8 @@ export function CrudTable<T extends Record<string, any>>({
             ))}
           </div>
         </div>
+
+        {attachments && <DocumentAttachments moduleCode={attachments.moduleCode} recordId={editingId} />}
 
         <div className="mt-4 flex gap-2">
           <button
