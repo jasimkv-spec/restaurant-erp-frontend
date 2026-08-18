@@ -32,11 +32,12 @@ export default function DocumentSeries() {
   return (
     <CrudTable
       title="Document Series"
-      description="How each transaction type gets numbered - prefix, digit padding, separator, and optional year/month segments. Leave branch blank for a series shared across the whole company."
+      description="How each transaction type gets numbered - prefix, digit padding, separator, and optional year/month segments. Leave branch blank for a series shared across the whole company. Note: the actual PO/GRN/Invoice etc. entry screens aren't built yet, so switching a type to Manual here won't have anywhere to be used until that screen exists."
       basePath="/api/admin/document-series"
       columns={[
         { key: "moduleCode", label: "Document type" },
         { key: "prefix", label: "Prefix" },
+        { key: "numberingMode", label: "Numbering" },
         { key: "nextNo", label: "Next number" },
         { key: "digitLength", label: "Digits" },
       ]}
@@ -49,6 +50,15 @@ export default function DocumentSeries() {
           type: "select",
           required: true,
           options: MODULE_CODES.map((m) => ({ value: m, label: m })),
+        },
+        {
+          key: "numberingMode",
+          label: "Numbering",
+          type: "select",
+          options: [
+            { value: "Auto", label: "Auto (system generates)" },
+            { value: "Manual", label: "Manual (user types the number)" },
+          ],
         },
         { key: "prefix", label: "Prefix", type: "text", required: true, placeholder: "PO, GRN, INV..." },
         { key: "nextNo", label: "Next number", type: "number", placeholder: "1" },

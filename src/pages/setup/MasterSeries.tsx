@@ -9,6 +9,7 @@ export default function MasterSeries() {
       columns={[
         { key: "entityType", label: "Entity type" },
         { key: "prefix", label: "Prefix" },
+        { key: "numberingMode", label: "Numbering" },
         { key: "nextNo", label: "Next number" },
         { key: "digitLength", label: "Digits" },
       ]}
@@ -22,6 +23,15 @@ export default function MasterSeries() {
             { value: "Vendor", label: "Vendor" },
             { value: "Customer", label: "Customer" },
             { value: "Employee", label: "Employee" },
+          ],
+        },
+        {
+          key: "numberingMode",
+          label: "Numbering",
+          type: "select",
+          options: [
+            { value: "Auto", label: "Auto (system generates)" },
+            { value: "Manual", label: "Manual (user types the code)" },
           ],
         },
         { key: "prefix", label: "Prefix", type: "text", required: true, placeholder: "SUP, VEN, CUS, CL, EMP..." },

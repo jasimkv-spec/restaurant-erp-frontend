@@ -63,6 +63,7 @@ export function CrudTable<T extends Record<string, any>>({
   const [form, setForm] = useState<Record<string, any>>({});
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
+  const [togglingStatus, setTogglingStatus] = useState(false);
 
   async function load() {
     setLoading(true);
@@ -105,6 +106,23 @@ export function CrudTable<T extends Record<string, any>>({
 
   function backToList() {
     setView("list");
+  }
+
+  async function handleToggleStatus() {
+    if (!editingId) return;
+    const isActive = String(form[statusCol!.key] ?? "").toLowerCase() === "active";
+    setTogglingStatus(true);
+    setFormError(null);
+    try {
+      const action = isActive ? "deactivate" : "activate";
+      const updated = await api.post<T>(`${basePath}/${editingId}/${action}`);
+      setForm((prev) => ({ ...prev, ...updated }));
+      await load();
+    } catch (err) {
+      setFormError(err instanceof ApiError ? err.message : "Could not change status");
+    } finally {
+      setTogglingStatus(false);
+    }
   }
 
   async function handleSave() {
@@ -206,6 +224,23 @@ export function CrudTable<T extends Record<string, any>>({
           >
             Cancel
           </button>
+          {editingId && statusCol && (
+            <button
+              onClick={handleToggleStatus}
+              disabled={togglingStatus}
+              className={`ml-auto rounded-lg border px-4 py-2 text-sm font-medium disabled:opacity-50 ${
+                String(form[statusCol.key] ?? "").toLowerCase() === "active"
+                  ? "border-red-200 text-red-600 hover:bg-red-50"
+                  : "border-emerald-200 text-emerald-600 hover:bg-emerald-50"
+              }`}
+            >
+              {togglingStatus
+                ? "Working..."
+                : String(form[statusCol.key] ?? "").toLowerCase() === "active"
+                ? "Disable"
+                : "Enable"}
+            </button>
+          )}
         </div>
       </div>
     );
