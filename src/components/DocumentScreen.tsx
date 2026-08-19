@@ -1,28 +1,37 @@
 import { useEffect, useState } from "react";
-import { ArrowLeft, Plus, Trash2 } from "lucide-react";
+import { ArrowLeft, Pencil, Plus, Trash2 } from "lucide-react";
 import { api, ApiError, type ListResponse } from "../lib/apiClient";
 import { FIELD_CLASS, LABEL_CLASS } from "./CrudTable";
 
 /**
  * Generic screen for transactional documents (Material Request, Purchase
  * Order, GRN, Stock Transfer, Stock Adjustment, ...) - a header + an
- * editable line-item grid + a Draft -> Submit -> Approve -> Post lifecycle.
+ * editable line-item grid + a Draft -> Submit -> Approve -> Post lifecycle,
+ * plus Edit/Delete while a document is still in an editable status (see
+ * editableStatuses/deletableStatuses - default just "Draft", matching every
+ * module's own submit/approve routes which only accept a Draft document).
  *
  * Deliberately separate from CrudTable: masters are flat records with
- * enable/disable, documents are header+lines with a status workflow and no
- * generic PUT (each module's routes.ts owns its own transition rules), so
- * trying to force both shapes through one component was worse than having
- * two purpose-built ones. Every field in headerFields/lineFields must
- * already exist as a plain key on the create payload - options for "select"
- * fields are fetched by the caller (useOptions) and passed in, same
- * convention as CrudTable's formFields.
+ * enable/disable, documents are header+lines with a status workflow and
+ * module-owned transition rules, so trying to force both shapes through one
+ * component was worse than having two purpose-built ones. Every field in
+ * headerFields/lineFields must already exist as a plain key on the
+ * create/update payload - options for "select" fields are fetched by the
+ * caller (useOptions) and passed in, same convention as CrudTable's
+ * formFields. A "select" lineField can instead take optionsForRow to scope
+ * choices per-row (e.g. only the packing units configured for the item
+ * picked on that particular line).
  */
 
 export interface DocFieldConfig {
   key: string;
   label: string;
-  type: "text" | "number" | "select" | "date";
+  type: "text" | "number" | "select" | "date" | "textarea" | "readonly";
   options?: { value: string; label: string }[];
+  /** Per-row options for a "select" lineField, e.g. scoped to the item picked on that row. Takes priority over options when present. */
+  optionsForRow?: (row: Record<string, any>) => { value: string; label: string }[];
+  /** For type "readonly" - a display-only derived value (e.g. an item's base UOM), never sent back to the server. */
+  computed?: (row: Record<string, any>) => string;
   required?: boolean;
   placeholder?: string;
   /** Greys the field out and blocks input - e.g. a branch that's auto-selected because the user only has access to one. */
@@ -79,6 +88,33 @@ export function PriorityBadge({ priority }: { priority: string }) {
   );
 }
 
+/** "2026-08-19T12:00:00.000Z" -> "2026-08-19", so it can seed an <input type="date">. Passes through anything that isn't a parseable date untouched. */
+function toDateInputValue(value: any): string {
+  if (!value) return "";
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return "";
+  return d.toISOString().slice(0, 10);
+}
+
+/**
+ * Resolves what to show for a select-type field's value in a read-only
+ * context (detail view). Prefers the matching relation object the API
+ * already included (e.g. a lineField "itemId" pairs with a "item" relation,
+ * "uomId" with "uom") over an options-list lookup, since a line/header can
+ * reference a record (an item, a uom, a branch) that isn't in the option
+ * list actually loaded on screen (paged out, since made inactive, etc).
+ */
+function resolveDisplayValue(f: DocFieldConfig, row: Record<string, any>): string {
+  const relationKey = f.key.endsWith("Id") ? f.key.slice(0, -2) : null;
+  const relation = relationKey ? row[relationKey] : null;
+  if (relation && typeof relation === "object") {
+    if (relation.code && relation.name) return `${relation.code} - ${relation.name}`;
+    if (relation.code) return relation.code;
+    if (relation.name) return relation.name;
+  }
+  return f.options?.find((o) => o.value === row[f.key])?.label ?? row[f.key] ?? "-";
+}
+
 export function DocumentScreen({
   title,
   description,
@@ -89,6 +125,9 @@ export function DocumentScreen({
   emptyLine,
   lifecycle,
   createDefaults,
+  editableStatuses = ["Draft"],
+  deletableStatuses = ["Draft"],
+  onLineFieldChange,
 }: {
   title: string;
   description: string;
@@ -99,18 +138,27 @@ export function DocumentScreen({
   emptyLine: Record<string, any>;
   lifecycle: LifecycleStep[];
   createDefaults?: Record<string, any>;
+  /** Statuses that still allow editing the whole document (header + lines). Default: Draft only, matching every module's submit route. */
+  editableStatuses?: string[];
+  /** Statuses that still allow deleting the document outright. Default: Draft only. */
+  deletableStatuses?: string[];
+  /** Fires after any line field changes, with the row's latest values - lets the caller react (e.g. fetch that item's packing-unit options when itemId changes). */
+  onLineFieldChange?: (index: number, key: string, value: any, row: Record<string, any>) => void;
 }) {
-  const [view, setView] = useState<"list" | "create" | "detail">("list");
+  const [view, setView] = useState<"list" | "form" | "detail">("list");
   const [rows, setRows] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [header, setHeader] = useState<Record<string, any>>(createDefaults ?? {});
   const [lines, setLines] = useState<Record<string, any>[]>([{ ...emptyLine }]);
   const [saving, setSaving] = useState(false);
 
   const [detail, setDetail] = useState<any | null>(null);
   const [actionBusy, setActionBusy] = useState<string | null>(null);
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   async function load() {
     setLoading(true);
@@ -130,16 +178,40 @@ export function DocumentScreen({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [basePath]);
 
+  function fieldInputValue(row: Record<string, any>, f: DocFieldConfig) {
+    const v = row[f.key];
+    return f.type === "date" ? toDateInputValue(v) : v ?? "";
+  }
+
   function openCreate() {
+    setEditingId(null);
     setHeader(createDefaults ?? {});
     setLines([{ ...emptyLine }]);
     setError(null);
-    setView("create");
+    setView("form");
+  }
+
+  function openEdit(record: any) {
+    setEditingId(record.id);
+    const nextHeader: Record<string, any> = {};
+    for (const f of headerFields) nextHeader[f.key] = fieldInputValue(record, f);
+    setHeader(nextHeader);
+    const recordLines = (record.lines ?? []).length ? record.lines : [emptyLine];
+    setLines(
+      recordLines.map((line: any) => {
+        const row: Record<string, any> = {};
+        for (const f of lineFields) if (f.type !== "readonly") row[f.key] = fieldInputValue(line, f);
+        return row;
+      })
+    );
+    setError(null);
+    setView("form");
   }
 
   async function openDetail(id: string) {
     setError(null);
     setDetail(null);
+    setConfirmingDelete(false);
     setView("detail");
     try {
       const record = await api.get<any>(`${basePath}/${id}`);
@@ -153,10 +225,15 @@ export function DocumentScreen({
     setView("list");
     setDetail(null);
     setError(null);
+    setConfirmingDelete(false);
   }
 
   function setLineValue(index: number, key: string, value: any) {
-    setLines((prev) => prev.map((l, i) => (i === index ? { ...l, [key]: value } : l)));
+    setLines((prev) => {
+      const next = prev.map((l, i) => (i === index ? { ...l, [key]: value } : l));
+      onLineFieldChange?.(index, key, value, next[index]);
+      return next;
+    });
   }
 
   function addLine() {
@@ -174,6 +251,7 @@ export function DocumentScreen({
       const cleanLines = lines.map((l) => {
         const out: Record<string, any> = {};
         for (const f of lineFields) {
+          if (f.type === "readonly") continue;
           const v = l[f.key];
           if (v === "" || v === undefined || v === null) continue;
           out[f.key] = f.type === "number" ? Number(v) : v;
@@ -186,13 +264,35 @@ export function DocumentScreen({
         if (v === "" || v === undefined || v === null) continue;
         cleanHeader[f.key] = f.type === "number" ? Number(v) : v;
       }
-      await api.post(basePath, { ...cleanHeader, lines: cleanLines });
+      if (editingId) {
+        await api.put(`${basePath}/${editingId}`, { ...cleanHeader, lines: cleanLines });
+      } else {
+        await api.post(basePath, { ...cleanHeader, lines: cleanLines });
+      }
       setView("list");
+      setEditingId(null);
       await load();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Could not save this document");
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function handleDelete() {
+    if (!detail) return;
+    setDeleting(true);
+    setError(null);
+    try {
+      await api.del(`${basePath}/${detail.id}`);
+      setView("list");
+      setConfirmingDelete(false);
+      await load();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Could not delete this document");
+      setConfirmingDelete(false);
+    } finally {
+      setDeleting(false);
     }
   }
 
@@ -211,6 +311,55 @@ export function DocumentScreen({
       setActionBusy(null);
     }
   }
+
+  function renderFieldInput(f: DocFieldConfig, row: Record<string, any>, onChange: (value: any) => void, rowOptions?: { value: string; label: string }[]) {
+    if (f.type === "readonly") {
+      return <div className="px-1 py-2 text-sm text-gray-500">{f.computed?.(row) ?? "-"}</div>;
+    }
+    const disabledCls = f.disabled ? "bg-gray-100 text-gray-500" : "";
+    if (f.type === "select") {
+      const opts = rowOptions ?? f.options ?? [];
+      return (
+        <select
+          className={`${FIELD_CLASS} ${disabledCls}`}
+          value={row[f.key] ?? ""}
+          disabled={f.disabled}
+          onChange={(e) => onChange(e.target.value)}
+        >
+          <option value="">Select...</option>
+          {opts.map((o) => (
+            <option key={o.value} value={o.value}>
+              {o.label}
+            </option>
+          ))}
+        </select>
+      );
+    }
+    if (f.type === "textarea") {
+      return (
+        <textarea
+          className={`${FIELD_CLASS} ${disabledCls}`}
+          rows={2}
+          placeholder={f.placeholder}
+          value={row[f.key] ?? ""}
+          disabled={f.disabled}
+          onChange={(e) => onChange(e.target.value)}
+        />
+      );
+    }
+    return (
+      <input
+        type={f.type === "date" ? "date" : f.type === "number" ? "number" : "text"}
+        className={`${FIELD_CLASS} ${disabledCls}`}
+        placeholder={f.placeholder}
+        value={row[f.key] ?? ""}
+        disabled={f.disabled}
+        onChange={(e) => onChange(e.target.value)}
+      />
+    );
+  }
+
+  const hasBaseQty = (detail?.lines ?? []).some((l: any) => l.baseQty != null);
 
   return (
     <div className="mx-auto max-w-6xl">
@@ -279,13 +428,15 @@ export function DocumentScreen({
         </>
       )}
 
-      {view === "create" && (
+      {view === "form" && (
         <>
           <button onClick={backToList} className="mb-4 flex items-center gap-1.5 text-sm font-semibold text-gray-500 hover:text-navy-900">
             <ArrowLeft size={16} />
             Back to list
           </button>
-          <h1 className="mb-1 text-xl font-bold text-navy-900">New {title.replace(/s$/, "")}</h1>
+          <h1 className="mb-1 text-xl font-bold text-navy-900">
+            {editingId ? `Edit ${title.replace(/s$/, "")}` : `New ${title.replace(/s$/, "")}`}
+          </h1>
           <p className="mb-5 text-sm text-gray-500">{description}</p>
 
           {error && (
@@ -295,35 +446,12 @@ export function DocumentScreen({
           <div className="mb-5 rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
               {headerFields.map((f) => (
-                <div key={f.key}>
+                <div key={f.key} className={f.type === "textarea" ? "sm:col-span-2 lg:col-span-3" : ""}>
                   <label className={LABEL_CLASS}>
                     {f.label}
                     {f.required && <span className="text-red-500"> *</span>}
                   </label>
-                  {f.type === "select" ? (
-                    <select
-                      className={`${FIELD_CLASS} ${f.disabled ? "bg-gray-100 text-gray-500" : ""}`}
-                      value={header[f.key] ?? ""}
-                      disabled={f.disabled}
-                      onChange={(e) => setHeader((prev) => ({ ...prev, [f.key]: e.target.value }))}
-                    >
-                      <option value="">Select...</option>
-                      {(f.options ?? []).map((o) => (
-                        <option key={o.value} value={o.value}>
-                          {o.label}
-                        </option>
-                      ))}
-                    </select>
-                  ) : (
-                    <input
-                      type={f.type === "date" ? "date" : f.type === "number" ? "number" : "text"}
-                      className={`${FIELD_CLASS} ${f.disabled ? "bg-gray-100 text-gray-500" : ""}`}
-                      placeholder={f.placeholder}
-                      value={header[f.key] ?? ""}
-                      disabled={f.disabled}
-                      onChange={(e) => setHeader((prev) => ({ ...prev, [f.key]: e.target.value }))}
-                    />
-                  )}
+                  {renderFieldInput(f, header, (value) => setHeader((prev) => ({ ...prev, [f.key]: value })))}
                 </div>
               ))}
             </div>
@@ -358,27 +486,7 @@ export function DocumentScreen({
                     <tr key={i}>
                       {lineFields.map((f) => (
                         <td key={f.key} className="px-2 py-1.5">
-                          {f.type === "select" ? (
-                            <select
-                              className={FIELD_CLASS}
-                              value={line[f.key] ?? ""}
-                              onChange={(e) => setLineValue(i, f.key, e.target.value)}
-                            >
-                              <option value="">Select...</option>
-                              {(f.options ?? []).map((o) => (
-                                <option key={o.value} value={o.value}>
-                                  {o.label}
-                                </option>
-                              ))}
-                            </select>
-                          ) : (
-                            <input
-                              type={f.type === "date" ? "date" : f.type === "number" ? "number" : "text"}
-                              className={FIELD_CLASS}
-                              value={line[f.key] ?? ""}
-                              onChange={(e) => setLineValue(i, f.key, e.target.value)}
-                            />
-                          )}
+                          {renderFieldInput(f, line, (value) => setLineValue(i, f.key, value), f.optionsForRow?.(line))}
                         </td>
                       ))}
                       <td className="px-2 py-1.5">
@@ -406,7 +514,7 @@ export function DocumentScreen({
               disabled={saving}
               className="rounded-lg bg-brand-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-brand-700 disabled:opacity-50"
             >
-              {saving ? "Saving..." : "Save as Draft"}
+              {saving ? "Saving..." : editingId ? "Save changes" : "Save as Draft"}
             </button>
           </div>
         </>
@@ -430,6 +538,7 @@ export function DocumentScreen({
               <div className="mb-5 flex items-center justify-between">
                 <div className="flex items-center gap-3">
                   <h1 className="text-xl font-bold text-navy-900">{detail.mrNo ?? detail.poNo ?? detail.grnNo ?? detail.transferNo ?? detail.adjustmentNo ?? detail.id}</h1>
+                  {detail.title && <span className="text-sm text-gray-500">- {detail.title}</span>}
                   <StatusBadge status={detail.status} />
                 </div>
                 <div className="flex gap-2">
@@ -445,17 +554,54 @@ export function DocumentScreen({
                         {actionBusy === step.action ? "..." : step.label}
                       </button>
                     ))}
+                  {editableStatuses.includes(detail.status) && (
+                    <button
+                      onClick={() => openEdit(detail)}
+                      className="flex items-center gap-1.5 rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50"
+                    >
+                      <Pencil size={14} />
+                      Edit
+                    </button>
+                  )}
+                  {deletableStatuses.includes(detail.status) && (
+                    <button
+                      onClick={() => setConfirmingDelete(true)}
+                      className="flex items-center gap-1.5 rounded-lg border border-red-200 bg-white px-4 py-2 text-sm font-semibold text-red-600 hover:bg-red-50"
+                    >
+                      <Trash2 size={14} />
+                      Delete
+                    </button>
+                  )}
                 </div>
               </div>
 
+              {confirmingDelete && (
+                <div className="mb-5 flex items-center justify-between rounded-lg border border-red-200 bg-red-50 px-4 py-3">
+                  <div className="text-sm text-red-700">Delete this document permanently? This can't be undone.</div>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => setConfirmingDelete(false)}
+                      className="rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-xs font-semibold text-gray-700 hover:bg-gray-50"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      onClick={handleDelete}
+                      disabled={deleting}
+                      className="rounded-lg bg-red-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-red-700 disabled:opacity-50"
+                    >
+                      {deleting ? "Deleting..." : "Delete"}
+                    </button>
+                  </div>
+                </div>
+              )}
+
               <div className="mb-5 grid grid-cols-1 gap-4 rounded-xl border border-gray-200 bg-white p-4 shadow-sm sm:grid-cols-2 lg:grid-cols-3">
                 {headerFields.map((f) => (
-                  <div key={f.key}>
+                  <div key={f.key} className={f.type === "textarea" ? "sm:col-span-2 lg:col-span-3" : ""}>
                     <div className={LABEL_CLASS}>{f.label}</div>
-                    <div className="text-sm text-navy-900">
-                      {f.type === "select"
-                        ? f.options?.find((o) => o.value === detail[f.key])?.label ?? detail[f.key] ?? "-"
-                        : String(detail[f.key] ?? "-")}
+                    <div className="whitespace-pre-wrap text-sm text-navy-900">
+                      {f.type === "select" ? resolveDisplayValue(f, detail) : String(detail[f.key] ?? "-")}
                     </div>
                   </div>
                 ))}
@@ -472,7 +618,7 @@ export function DocumentScreen({
                             {f.label}
                           </th>
                         ))}
-                        {(detail.lines ?? []).some((l: any) => l.baseQty != null) && (
+                        {hasBaseQty && (
                           <th className="px-2 pb-2 text-left text-[11px] font-semibold uppercase tracking-wide text-gray-500">
                             In base unit
                           </th>
@@ -484,14 +630,14 @@ export function DocumentScreen({
                         <tr key={line.id ?? i}>
                           {lineFields.map((f) => (
                             <td key={f.key} className="px-2 py-1.5 text-navy-900">
-                              {f.type === "select"
-                                ? line.item
-                                  ? `${line.item.code} - ${line.item.name}`
-                                  : f.options?.find((o) => o.value === line[f.key])?.label ?? line[f.key] ?? "-"
-                                : String(line[f.key] ?? "-")}
+                              {f.type === "readonly"
+                                ? f.computed?.(line) ?? "-"
+                                : f.type === "select"
+                                  ? resolveDisplayValue(f, line)
+                                  : String(line[f.key] ?? "-")}
                             </td>
                           ))}
-                          {(detail.lines ?? []).some((l: any) => l.baseQty != null) && (
+                          {hasBaseQty && (
                             <td className="px-2 py-1.5 text-gray-500">
                               {line.baseQty != null
                                 ? `${line.baseQty} ${line.item?.baseUom?.code ?? ""}`
