@@ -34,6 +34,12 @@ import {
   ListOrdered,
   SlidersHorizontal,
   FileText,
+  Boxes,
+  Tags,
+  FolderTree,
+  Award,
+  DollarSign,
+  Link2,
 } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import { getTenantCode } from "../lib/apiClient";
@@ -92,7 +98,21 @@ const NAV: NavGroup[] = [
       { label: "Payment methods", path: "/masters/payment-methods", icon: CreditCard },
     ],
   },
-  { key: "inventory", label: "Inventory", icon: LayoutGrid, items: [], comingSoon: true },
+  {
+    key: "inventory",
+    label: "Inventory",
+    icon: LayoutGrid,
+    items: [
+      { label: "Items", path: "/inventory/items", icon: Boxes },
+      { label: "Item categories", path: "/inventory/item-categories", icon: FolderTree },
+      { label: "Product groups", path: "/inventory/product-groups", icon: Tags },
+      { label: "Product subgroups", path: "/inventory/product-subgroups", icon: Tags },
+      { label: "Product families", path: "/inventory/product-families", icon: Tags },
+      { label: "Brands", path: "/inventory/brands", icon: Award },
+      { label: "Item prices", path: "/inventory/item-prices", icon: DollarSign },
+      { label: "Item-vendor mapping", path: "/inventory/item-vendor-mappings", icon: Link2 },
+    ],
+  },
   {
     key: "procurement",
     label: "Procurement",

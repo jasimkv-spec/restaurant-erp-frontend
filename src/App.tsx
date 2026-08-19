@@ -26,6 +26,14 @@ import PaymentMethods from "./pages/masters/PaymentMethods";
 import Vendors from "./pages/procurement/Vendors";
 import Customers from "./pages/sales/Customers";
 import DocumentTypes from "./pages/workflow/DocumentTypes";
+import Items from "./pages/inventory/Items";
+import ItemCategories from "./pages/inventory/ItemCategories";
+import ProductGroups from "./pages/inventory/ProductGroups";
+import ProductSubgroups from "./pages/inventory/ProductSubgroups";
+import ProductFamilies from "./pages/inventory/ProductFamilies";
+import Brands from "./pages/inventory/Brands";
+import ItemPrices from "./pages/inventory/ItemPrices";
+import ItemVendorMappings from "./pages/inventory/ItemVendorMappings";
 
 function RequireAuth({ children }: { children: ReactNode }) {
   const { isAuthenticated } = useAuth();
@@ -65,6 +73,15 @@ export default function App() {
           <Route path="/procurement/vendors" element={<RequireAuth><Vendors /></RequireAuth>} />
           <Route path="/sales/customers" element={<RequireAuth><Customers /></RequireAuth>} />
           <Route path="/workflow/document-types" element={<RequireAuth><DocumentTypes /></RequireAuth>} />
+
+          <Route path="/inventory/items" element={<RequireAuth><Items /></RequireAuth>} />
+          <Route path="/inventory/item-categories" element={<RequireAuth><ItemCategories /></RequireAuth>} />
+          <Route path="/inventory/product-groups" element={<RequireAuth><ProductGroups /></RequireAuth>} />
+          <Route path="/inventory/product-subgroups" element={<RequireAuth><ProductSubgroups /></RequireAuth>} />
+          <Route path="/inventory/product-families" element={<RequireAuth><ProductFamilies /></RequireAuth>} />
+          <Route path="/inventory/brands" element={<RequireAuth><Brands /></RequireAuth>} />
+          <Route path="/inventory/item-prices" element={<RequireAuth><ItemPrices /></RequireAuth>} />
+          <Route path="/inventory/item-vendor-mappings" element={<RequireAuth><ItemVendorMappings /></RequireAuth>} />
 
           <Route path="/" element={<Navigate to="/setup/companies" replace />} />
           <Route path="*" element={<Navigate to="/setup/companies" replace />} />
