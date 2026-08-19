@@ -7,6 +7,7 @@ export default function ItemMaster() {
       description="Everything else - packaging, stationery, spares, services, and other non-stock items that aren't raw materials or menu items."
       itemTypes={["Non-stock", "Stationary", "Packaging", "Service", "Spare"]}
       defaultItemType="Non-stock"
+      codePlaceholder="Leave blank to auto-generate, e.g. ITM0001"
     />
   );
 }

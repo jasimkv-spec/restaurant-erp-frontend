@@ -31,11 +31,14 @@ export function ProductItemsView({
   description,
   itemTypes,
   defaultItemType,
+  codePlaceholder,
 }: {
   title: string;
   description: string;
   itemTypes: string[];
   defaultItemType: string;
+  /** e.g. "Leave blank to auto-generate, e.g. RM0001" - each of the three screens has its own Master Series entry (see inventory.routes.ts's ITEM_AUTO_CODE_SERIES), so the hint should match. */
+  codePlaceholder: string;
 }) {
   const categoryOptions = useOptions("/api/inventory/item-categories", (c) => `${c.code} - ${c.name}`);
   const groupOptions = useOptions("/api/inventory/product-groups", (g) => `${g.code} - ${g.name}`);
@@ -60,7 +63,7 @@ export function ProductItemsView({
         { key: "status", label: "Status" },
       ]}
       formFields={[
-        { key: "code", label: "Code", type: "text", placeholder: "Leave blank to auto-generate, e.g. ITM0001" },
+        { key: "code", label: "Code", type: "text", placeholder: codePlaceholder },
         { key: "name", label: "Name", type: "text", required: true },
         { key: "forSales", label: "Sales", type: "checkbox" },
         { key: "forManufacture", label: "Manufacture", type: "checkbox" },

@@ -4,7 +4,7 @@ export default function MasterSeries() {
   return (
     <CrudTable
       title="Master Series"
-      description="Auto-numbering prefixes for master-data codes - e.g. entity type 'Vendor' with prefix 'SUP' generates SUP0001, SUP0002, ... Leave a vendor/customer's code blank when creating one and it picks up the next number here automatically."
+      description="Auto-numbering prefixes for master-data codes - e.g. entity type 'Vendor' with prefix 'SUP' generates SUP0001, SUP0002, ... Leave a record's code blank when creating one and it picks up the next number here automatically. Raw Materials Master, Menu Master, and Item Master each have their own series (RM/MEN/ITM) even though they share one Products screen."
       basePath="/api/admin/master-series"
       columns={[
         { key: "entityType", label: "Entity type" },
@@ -23,7 +23,9 @@ export default function MasterSeries() {
             { value: "Vendor", label: "Vendor" },
             { value: "Customer", label: "Customer" },
             { value: "Employee", label: "Employee" },
-            { value: "Item", label: "Item (Product code)" },
+            { value: "RawMaterial", label: "Raw Materials Master" },
+            { value: "MenuItem", label: "Menu Master" },
+            { value: "Item", label: "Item Master (everything else)" },
           ],
         },
         {
