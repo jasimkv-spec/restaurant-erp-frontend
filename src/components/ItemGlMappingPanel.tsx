@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Landmark } from "lucide-react";
 import { api, ApiError } from "../lib/apiClient";
 import { useOptions } from "../lib/useOptions";
+import { FIELD_CLASS, LABEL_CLASS } from "./CrudTable";
 
 interface GlMappingForm {
   inventoryGlId: string;
@@ -76,24 +77,26 @@ export function ItemGlMappingPanel({ itemId }: { itemId: string }) {
   }
 
   return (
-    <div className="mt-4 rounded-xl border border-gray-200 bg-white p-4">
-      <div className="mb-2.5 flex items-center gap-1.5 text-[11px] font-medium text-gray-400">
+    <div className="mt-4 rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
+      <div className="mb-3 flex items-center gap-1.5 border-b border-gray-100 pb-2 text-[11px] font-semibold uppercase tracking-wide text-brand-700">
         <Landmark size={12} />
         Account mapping
       </div>
 
-      {error && <div className="mb-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div>}
+      {error && (
+        <div className="mb-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div>
+      )}
 
       {loading ? (
         <div className="py-4 text-center text-sm text-gray-400">Loading...</div>
       ) : (
         <>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-2 gap-4">
             {FIELDS.map((f) => (
               <div key={f.key}>
-                <label className="mb-1 block text-xs text-gray-500">{f.label}</label>
+                <label className={LABEL_CLASS}>{f.label}</label>
                 <select
-                  className="w-full rounded-md border border-gray-200 px-2.5 py-1.5 text-sm"
+                  className={FIELD_CLASS}
                   value={form[f.key]}
                   onChange={(e) => setForm((prev) => ({ ...prev, [f.key]: e.target.value }))}
                 >
@@ -110,7 +113,7 @@ export function ItemGlMappingPanel({ itemId }: { itemId: string }) {
           <button
             onClick={handleSave}
             disabled={saving}
-            className="mt-3 rounded-lg bg-brand-600 px-3.5 py-1.5 text-xs font-medium text-white hover:bg-brand-700 disabled:opacity-50"
+            className="mt-3 rounded-lg bg-brand-600 px-3.5 py-2 text-xs font-semibold text-white shadow-sm transition-colors hover:bg-brand-700 disabled:opacity-50"
           >
             {saving ? "Saving..." : saved ? "Saved" : "Save account mapping"}
           </button>

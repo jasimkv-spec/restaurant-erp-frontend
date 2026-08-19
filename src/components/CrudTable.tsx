@@ -40,14 +40,23 @@ function statusPill(status: string) {
   const isActive = status.toLowerCase() === "active";
   return (
     <span
-      className={`rounded-full px-2.5 py-0.5 text-[11px] ${
-        isActive ? "bg-emerald-50 text-emerald-700" : "bg-gray-100 text-gray-500"
+      className={`rounded-full border px-2.5 py-0.5 text-[11px] font-medium ${
+        isActive ? "border-emerald-200 bg-emerald-50 text-emerald-700" : "border-gray-200 bg-gray-100 text-gray-500"
       }`}
     >
       {status}
     </span>
   );
 }
+
+// Shared field styling - every input/select in the app should look and
+// behave the same: a clearly visible border, and an unmistakable focus
+// ring so it's obvious which box you're typing into. Exported so the
+// smaller hand-built panels (DocumentAttachments, PriceGroupBranches,
+// ItemGlMappingPanel, etc.) stay visually consistent with this component.
+export const FIELD_CLASS =
+  "w-full rounded-lg border-2 border-gray-300 bg-white px-3 py-2 text-sm text-navy-900 shadow-sm outline-none transition-colors placeholder:text-gray-400 hover:border-gray-400 focus:border-brand-600 focus:ring-4 focus:ring-brand-100";
+export const LABEL_CLASS = "mb-1.5 block text-xs font-semibold text-gray-700";
 
 /**
  * Generic list + transaction-screen pair for any of the backend's
@@ -168,31 +177,37 @@ export function CrudTable<T extends Record<string, any>>({
       <div className="p-6">
         <button
           onClick={backToList}
-          className="mb-3 flex items-center gap-1.5 text-xs font-medium text-brand-600 hover:text-brand-700"
+          className="mb-3 flex items-center gap-1.5 text-xs font-semibold text-brand-700 hover:text-brand-600"
         >
           <ArrowLeft size={14} />
           Back to {title.toLowerCase()}
         </button>
 
-        <h2 className="text-base font-medium text-navy-900">
+        <h2 className="text-lg font-semibold text-navy-900">
           {editingId ? String(form[titleCol.key] ?? singular) : `New ${singular}`}
         </h2>
-        <p className="mb-4 text-xs text-gray-400">{singular} record</p>
+        <p className="mb-4 text-xs text-gray-500">{singular} record</p>
 
-        {formError && <div className="mb-4 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{formError}</div>}
+        {formError && (
+          <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+            {formError}
+          </div>
+        )}
 
-        <div className="rounded-xl border border-gray-200 bg-white p-4">
-          <div className="mb-2.5 text-[11px] font-medium text-gray-400">Details</div>
-          <div className="grid grid-cols-2 gap-3">
+        <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
+          <div className="mb-3 border-b border-gray-100 pb-2 text-[11px] font-semibold uppercase tracking-wide text-brand-700">
+            Details
+          </div>
+          <div className="grid grid-cols-2 gap-4">
             {formFields.map((f) => (
               <div key={f.key}>
-                <label className="mb-1 block text-xs text-gray-500">
+                <label className={LABEL_CLASS}>
                   {f.label}
                   {f.required && <span className="text-red-500"> *</span>}
                 </label>
                 {f.type === "select" ? (
                   <select
-                    className="w-full rounded-md border border-gray-200 px-2.5 py-1.5 text-sm"
+                    className={FIELD_CLASS}
                     value={form[f.key] ?? ""}
                     onChange={(e) => setForm((prev) => ({ ...prev, [f.key]: e.target.value }))}
                   >
@@ -204,17 +219,20 @@ export function CrudTable<T extends Record<string, any>>({
                     ))}
                   </select>
                 ) : f.type === "checkbox" ? (
-                  <input
-                    type="checkbox"
-                    checked={!!form[f.key]}
-                    onChange={(e) => setForm((prev) => ({ ...prev, [f.key]: e.target.checked }))}
-                    className="h-4 w-4 rounded border-gray-300"
-                  />
+                  <label className="flex h-[38px] items-center gap-2 rounded-lg border-2 border-transparent px-0.5 text-sm text-navy-900">
+                    <input
+                      type="checkbox"
+                      checked={!!form[f.key]}
+                      onChange={(e) => setForm((prev) => ({ ...prev, [f.key]: e.target.checked }))}
+                      className="h-4 w-4 cursor-pointer rounded border-2 border-gray-300 text-brand-600 focus:ring-4 focus:ring-brand-100"
+                    />
+                    {form[f.key] ? "Yes" : "No"}
+                  </label>
                 ) : (
                   <input
                     type={f.type}
                     placeholder={f.placeholder}
-                    className="w-full rounded-md border border-gray-200 px-2.5 py-1.5 text-sm"
+                    className={FIELD_CLASS}
                     value={form[f.key] ?? ""}
                     onChange={(e) => setForm((prev) => ({ ...prev, [f.key]: e.target.value }))}
                   />
@@ -231,13 +249,13 @@ export function CrudTable<T extends Record<string, any>>({
           <button
             onClick={handleSave}
             disabled={saving}
-            className="rounded-lg bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700 disabled:opacity-50"
+            className="rounded-lg bg-brand-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-brand-700 disabled:opacity-50"
           >
             {saving ? "Saving..." : "Save"}
           </button>
           <button
             onClick={backToList}
-            className="rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-navy-900 hover:bg-gray-50"
+            className="rounded-lg border-2 border-gray-300 bg-white px-4 py-2 text-sm font-semibold text-navy-900 transition-colors hover:border-gray-400 hover:bg-gray-50"
           >
             Cancel
           </button>
@@ -245,10 +263,10 @@ export function CrudTable<T extends Record<string, any>>({
             <button
               onClick={handleToggleStatus}
               disabled={togglingStatus}
-              className={`ml-auto rounded-lg border px-4 py-2 text-sm font-medium disabled:opacity-50 ${
+              className={`ml-auto rounded-lg border-2 px-4 py-2 text-sm font-semibold transition-colors disabled:opacity-50 ${
                 String(form[statusCol.key] ?? "").toLowerCase() === "active"
-                  ? "border-red-200 text-red-600 hover:bg-red-50"
-                  : "border-emerald-200 text-emerald-600 hover:bg-emerald-50"
+                  ? "border-red-300 text-red-600 hover:bg-red-50"
+                  : "border-emerald-300 text-emerald-600 hover:bg-emerald-50"
               }`}
             >
               {togglingStatus
@@ -265,20 +283,22 @@ export function CrudTable<T extends Record<string, any>>({
 
   return (
     <div className="p-6">
-      <h2 className="text-lg font-medium text-navy-900">{title}</h2>
-      {description && <p className="mb-4 mt-0.5 text-xs text-gray-500">{description}</p>}
+      <h2 className="text-xl font-semibold text-navy-900">{title}</h2>
+      {description && <p className="mb-4 mt-1 text-xs text-gray-500">{description}</p>}
 
       <button
         onClick={openCreate}
-        className="mb-4 flex items-center gap-1.5 rounded-lg bg-brand-600 px-3.5 py-2 text-xs font-medium text-white hover:bg-brand-700"
+        className="mb-4 flex items-center gap-1.5 rounded-lg bg-brand-600 px-3.5 py-2 text-xs font-semibold text-white shadow-sm transition-colors hover:bg-brand-700"
       >
         <Plus size={14} />
         Add {singular}
       </button>
 
-      {error && <div className="mb-4 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div>}
+      {error && (
+        <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div>
+      )}
 
-      <div className="overflow-hidden rounded-xl border border-gray-200 bg-white">
+      <div className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
         {loading ? (
           <div className="px-4 py-6 text-center text-sm text-gray-400">Loading...</div>
         ) : rows.length === 0 ? (
@@ -288,19 +308,19 @@ export function CrudTable<T extends Record<string, any>>({
             <div
               key={row.id}
               onClick={() => openEdit(row)}
-              className={`flex cursor-pointer items-center gap-3 px-4 py-3 hover:bg-gray-50 ${
+              className={`group flex cursor-pointer items-center gap-3 border-l-4 border-l-transparent px-4 py-3 transition-colors hover:border-l-brand-500 hover:bg-brand-50 ${
                 i > 0 ? "border-t border-gray-100" : ""
               }`}
             >
-              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-brand-200 to-brand-600 text-[11px] font-medium text-navy-900">
+              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-brand-200 to-brand-600 text-[11px] font-semibold text-navy-900">
                 {String(row[badgeCol.key] ?? "?").slice(0, 3).toUpperCase()}
               </div>
               <div className="min-w-0 flex-1">
-                <div className="truncate text-sm text-navy-900">
+                <div className="truncate text-sm font-medium text-navy-900">
                   {titleCol.render ? titleCol.render(row) : String(row[titleCol.key] ?? "-")}
                 </div>
                 {subCols.length > 0 && (
-                  <div className="truncate text-[11px] text-gray-400">
+                  <div className="truncate text-[11px] text-gray-500">
                     {subCols
                       .map((c) => (c.render ? c.render(row) : row[c.key]))
                       .filter((v) => v !== undefined && v !== null && v !== "")
@@ -309,7 +329,7 @@ export function CrudTable<T extends Record<string, any>>({
                 )}
               </div>
               {statusCol && statusPill(String(row[statusCol.key] ?? ""))}
-              <ChevronRight size={16} className="shrink-0 text-gray-300" />
+              <ChevronRight size={16} className="shrink-0 text-gray-300 transition-colors group-hover:text-brand-600" />
             </div>
           ))
         )}

@@ -170,7 +170,7 @@ export default function Layout({ children }: { children: ReactNode }) {
   const displayName = user?.displayName ?? user?.email ?? "";
 
   return (
-    <div className="flex min-h-screen bg-gray-50">
+    <div className="flex min-h-screen bg-gray-100">
       <aside className="flex w-56 shrink-0 flex-col bg-navy-800 px-2.5 py-4">
         <div className="mb-5 flex items-center gap-2 px-2">
           <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-gradient-to-br from-brand-200 to-brand-600 text-sm font-medium text-navy-900">
@@ -193,8 +193,8 @@ export default function Layout({ children }: { children: ReactNode }) {
                 <button
                   type="button"
                   onClick={() => !group.comingSoon && toggleGroup(group.key)}
-                  className={`flex w-full items-center justify-between rounded-lg px-2 py-1.5 text-xs font-medium ${
-                    group.comingSoon ? "cursor-default text-navy-400" : "text-white hover:bg-navy-700"
+                  className={`flex w-full items-center justify-between rounded-lg px-2 py-1.5 text-xs font-semibold transition-colors ${
+                    group.comingSoon ? "cursor-default text-navy-400" : "text-white hover:bg-navy-600"
                   }`}
                 >
                   <span className="flex items-center gap-2">
@@ -219,10 +219,10 @@ export default function Layout({ children }: { children: ReactNode }) {
                           key={item.path}
                           to={item.path}
                           className={({ isActive }) =>
-                            `flex items-center gap-2 rounded-lg px-2 py-1.5 text-[13px] ${
+                            `flex items-center gap-2 rounded-lg border-l-2 px-2 py-1.5 text-[13px] transition-colors ${
                               isActive
-                                ? "bg-navy-700 font-medium text-brand-500"
-                                : "text-navy-50 hover:bg-navy-700 hover:text-white"
+                                ? "border-l-brand-500 bg-navy-600 font-semibold text-brand-500"
+                                : "border-l-transparent text-navy-50 hover:bg-navy-600 hover:text-white"
                             }`
                           }
                         >

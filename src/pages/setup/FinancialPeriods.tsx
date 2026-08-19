@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { api, ApiError, type ListResponse } from "../../lib/apiClient";
 import { useOptions } from "../../lib/useOptions";
+import { FIELD_CLASS } from "../../components/CrudTable";
 
 const STATUSES = ["Open", "Soft Closed", "Closed", "Locked", "Reopened"];
 
@@ -77,31 +78,33 @@ export default function FinancialPeriods() {
 
   return (
     <div className="p-6">
-      <div className="flex items-center justify-between mb-4">
+      <div className="mb-4 flex items-center justify-between">
         <div>
-          <h2 className="text-lg font-medium text-navy-900">Financial Periods</h2>
-          <p className="text-xs text-gray-500 mt-0.5">
+          <h2 className="text-xl font-semibold text-navy-900">Financial Periods</h2>
+          <p className="mt-1 text-xs text-gray-500">
             Closing a period here actually blocks new postings against it - Finance and Inventory close independently.
           </p>
         </div>
         <button
           onClick={() => setFormOpen(true)}
-          className="flex items-center gap-1.5 rounded-lg bg-brand-600 px-3.5 py-2 text-xs font-medium text-white hover:bg-brand-700"
+          className="flex items-center gap-1.5 rounded-lg bg-brand-600 px-3.5 py-2 text-xs font-semibold text-white shadow-sm transition-colors hover:bg-brand-700"
         >
           + Add Period
         </button>
       </div>
 
-      {error && <div className="mb-4 rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div>}
+      {error && (
+        <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div>
+      )}
 
-      <div className="overflow-hidden rounded-lg border border-gray-200 bg-white">
+      <div className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
         <table className="min-w-full divide-y divide-gray-200">
-          <thead className="bg-gray-50">
+          <thead className="bg-gray-100">
             <tr>
-              <th className="px-4 py-2.5 text-left text-xs font-medium uppercase tracking-wide text-gray-500">Period</th>
-              <th className="px-4 py-2.5 text-left text-xs font-medium uppercase tracking-wide text-gray-500">Dates</th>
-              <th className="px-4 py-2.5 text-left text-xs font-medium uppercase tracking-wide text-gray-500">Inventory status</th>
-              <th className="px-4 py-2.5 text-left text-xs font-medium uppercase tracking-wide text-gray-500">Finance status</th>
+              <th className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-gray-600">Period</th>
+              <th className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-gray-600">Dates</th>
+              <th className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-gray-600">Inventory status</th>
+              <th className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-gray-600">Finance status</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100">
@@ -115,16 +118,16 @@ export default function FinancialPeriods() {
               </tr>
             ) : (
               periods.map((p) => (
-                <tr key={p.id} className="hover:bg-gray-50">
-                  <td className="px-4 py-2.5 text-sm text-gray-700">
+                <tr key={p.id} className="transition-colors hover:bg-brand-50">
+                  <td className="px-4 py-2.5 text-sm font-medium text-navy-900">
                     {p.fiscalYear}-{String(p.monthNo).padStart(2, "0")}
                   </td>
-                  <td className="px-4 py-2.5 text-sm text-gray-500">
+                  <td className="px-4 py-2.5 text-sm text-gray-600">
                     {p.startDate.slice(0, 10)} to {p.endDate.slice(0, 10)}
                   </td>
                   <td className="px-4 py-2.5">
                     <select
-                      className="rounded-md border border-gray-300 px-2 py-1 text-sm"
+                      className="rounded-lg border-2 border-gray-300 bg-white px-2 py-1.5 text-sm shadow-sm outline-none transition-colors hover:border-gray-400 focus:border-brand-600 focus:ring-4 focus:ring-brand-100"
                       value={p.inventoryStatus}
                       onChange={(e) => updateStatus(p.id, "inventoryStatus", e.target.value)}
                     >
@@ -135,7 +138,7 @@ export default function FinancialPeriods() {
                   </td>
                   <td className="px-4 py-2.5">
                     <select
-                      className="rounded-md border border-gray-300 px-2 py-1 text-sm"
+                      className="rounded-lg border-2 border-gray-300 bg-white px-2 py-1.5 text-sm shadow-sm outline-none transition-colors hover:border-gray-400 focus:border-brand-600 focus:ring-4 focus:ring-brand-100"
                       value={p.financeStatus}
                       onChange={(e) => updateStatus(p.id, "financeStatus", e.target.value)}
                     >
@@ -159,7 +162,7 @@ export default function FinancialPeriods() {
               <div>
                 <label className="mb-1 block text-sm font-medium text-gray-700">Company *</label>
                 <select
-                  className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+                  className={FIELD_CLASS}
                   value={form.companyId ?? ""}
                   onChange={(e) => setForm((p) => ({ ...p, companyId: e.target.value }))}
                 >
@@ -174,7 +177,7 @@ export default function FinancialPeriods() {
                   <label className="mb-1 block text-sm font-medium text-gray-700">Fiscal year *</label>
                   <input
                     type="number"
-                    className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+                    className={FIELD_CLASS}
                     value={form.fiscalYear ?? ""}
                     onChange={(e) => setForm((p) => ({ ...p, fiscalYear: e.target.value }))}
                   />
@@ -185,7 +188,7 @@ export default function FinancialPeriods() {
                     type="number"
                     min={1}
                     max={12}
-                    className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+                    className={FIELD_CLASS}
                     value={form.monthNo ?? ""}
                     onChange={(e) => setForm((p) => ({ ...p, monthNo: e.target.value }))}
                   />
@@ -195,7 +198,7 @@ export default function FinancialPeriods() {
                 <label className="mb-1 block text-sm font-medium text-gray-700">Start date *</label>
                 <input
                   type="date"
-                  className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+                  className={FIELD_CLASS}
                   value={form.startDate ?? ""}
                   onChange={(e) => setForm((p) => ({ ...p, startDate: e.target.value }))}
                 />
@@ -204,7 +207,7 @@ export default function FinancialPeriods() {
                 <label className="mb-1 block text-sm font-medium text-gray-700">End date *</label>
                 <input
                   type="date"
-                  className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+                  className={FIELD_CLASS}
                   value={form.endDate ?? ""}
                   onChange={(e) => setForm((p) => ({ ...p, endDate: e.target.value }))}
                 />
@@ -214,13 +217,13 @@ export default function FinancialPeriods() {
               <button
                 onClick={createPeriod}
                 disabled={saving}
-                className="flex-1 rounded-md bg-brand-600 px-3 py-2 text-sm font-medium text-white hover:bg-brand-700 disabled:opacity-50"
+                className="flex-1 rounded-lg bg-brand-600 px-3 py-2 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-brand-700 disabled:opacity-50"
               >
                 {saving ? "Saving..." : "Save"}
               </button>
               <button
                 onClick={() => setFormOpen(false)}
-                className="rounded-md border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+                className="rounded-lg border-2 border-gray-300 px-3 py-2 text-sm font-semibold text-gray-700 transition-colors hover:border-gray-400 hover:bg-gray-50"
               >
                 Cancel
               </button>

@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { ArrowLeft, Plus } from "lucide-react";
 import { api, ApiError, type ListResponse } from "../lib/apiClient";
-import type { CrudColumn, CrudFormField } from "./CrudTable";
+import { FIELD_CLASS, LABEL_CLASS, type CrudColumn, type CrudFormField } from "./CrudTable";
 
 interface AddOnlyListProps<T extends Record<string, any>> {
   title: string;
@@ -95,22 +95,24 @@ export function AddOnlyList<T extends Record<string, any>>({
           Back to {title.toLowerCase()}
         </button>
 
-        <h2 className="text-base font-medium text-navy-900">New {singular}</h2>
-        <p className="mb-4 text-xs text-gray-400">This is a shared reference list - entries can't be edited once added.</p>
+        <h2 className="text-lg font-semibold text-navy-900">New {singular}</h2>
+        <p className="mb-4 text-xs text-gray-500">This is a shared reference list - entries can't be edited once added.</p>
 
-        {formError && <div className="mb-4 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{formError}</div>}
+        {formError && (
+          <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{formError}</div>
+        )}
 
-        <div className="rounded-xl border border-gray-200 bg-white p-4">
-          <div className="grid grid-cols-2 gap-3">
+        <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
+          <div className="grid grid-cols-2 gap-4">
             {formFields.map((f) => (
               <div key={f.key}>
-                <label className="mb-1 block text-xs text-gray-500">
+                <label className={LABEL_CLASS}>
                   {f.label}
                   {f.required && <span className="text-red-500"> *</span>}
                 </label>
                 {f.type === "select" ? (
                   <select
-                    className="w-full rounded-md border border-gray-200 px-2.5 py-1.5 text-sm"
+                    className={FIELD_CLASS}
                     value={form[f.key] ?? ""}
                     onChange={(e) => setForm((prev) => ({ ...prev, [f.key]: e.target.value }))}
                   >
@@ -125,7 +127,7 @@ export function AddOnlyList<T extends Record<string, any>>({
                   <input
                     type={f.type}
                     placeholder={f.placeholder}
-                    className="w-full rounded-md border border-gray-200 px-2.5 py-1.5 text-sm"
+                    className={FIELD_CLASS}
                     value={form[f.key] ?? ""}
                     onChange={(e) => setForm((prev) => ({ ...prev, [f.key]: e.target.value }))}
                   />
@@ -139,13 +141,13 @@ export function AddOnlyList<T extends Record<string, any>>({
           <button
             onClick={handleSave}
             disabled={saving}
-            className="rounded-lg bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700 disabled:opacity-50"
+            className="rounded-lg bg-brand-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-brand-700 disabled:opacity-50"
           >
             {saving ? "Saving..." : "Save"}
           </button>
           <button
             onClick={() => setView("list")}
-            className="rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-navy-900 hover:bg-gray-50"
+            className="rounded-lg border-2 border-gray-300 bg-white px-4 py-2 text-sm font-semibold text-navy-900 transition-colors hover:border-gray-400 hover:bg-gray-50"
           >
             Cancel
           </button>
@@ -156,36 +158,41 @@ export function AddOnlyList<T extends Record<string, any>>({
 
   return (
     <div className="p-6">
-      <h2 className="text-lg font-medium text-navy-900">{title}</h2>
-      {description && <p className="mb-4 mt-0.5 text-xs text-gray-500">{description}</p>}
+      <h2 className="text-xl font-semibold text-navy-900">{title}</h2>
+      {description && <p className="mb-4 mt-1 text-xs text-gray-500">{description}</p>}
 
       <button
         onClick={openCreate}
-        className="mb-4 flex items-center gap-1.5 rounded-lg bg-brand-600 px-3.5 py-2 text-xs font-medium text-white hover:bg-brand-700"
+        className="mb-4 flex items-center gap-1.5 rounded-lg bg-brand-600 px-3.5 py-2 text-xs font-semibold text-white shadow-sm transition-colors hover:bg-brand-700"
       >
         <Plus size={14} />
         Add {singular}
       </button>
 
-      {error && <div className="mb-4 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div>}
+      {error && (
+        <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div>
+      )}
 
-      <div className="overflow-hidden rounded-xl border border-gray-200 bg-white">
+      <div className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
         {loading ? (
           <div className="px-4 py-6 text-center text-sm text-gray-400">Loading...</div>
         ) : rows.length === 0 ? (
           <div className="px-4 py-6 text-center text-sm text-gray-400">Nothing here yet.</div>
         ) : (
           rows.map((row, i) => (
-            <div key={row.id} className={`flex items-center gap-3 px-4 py-3 ${i > 0 ? "border-t border-gray-100" : ""}`}>
-              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-brand-200 to-brand-600 text-[11px] font-medium text-navy-900">
+            <div
+              key={row.id}
+              className={`flex items-center gap-3 px-4 py-3 transition-colors hover:bg-brand-50 ${i > 0 ? "border-t border-gray-100" : ""}`}
+            >
+              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-brand-200 to-brand-600 text-[11px] font-semibold text-navy-900">
                 {String(row[columns[0].key] ?? "?").slice(0, 3).toUpperCase()}
               </div>
               <div className="min-w-0 flex-1">
-                <div className="truncate text-sm text-navy-900">
+                <div className="truncate text-sm font-medium text-navy-900">
                   {titleCol.render ? titleCol.render(row) : String(row[titleCol.key] ?? "-")}
                 </div>
                 {subCols.length > 0 && (
-                  <div className="truncate text-[11px] text-gray-400">
+                  <div className="truncate text-[11px] text-gray-500">
                     {subCols
                       .map((c) => (c.render ? c.render(row) : row[c.key]))
                       .filter((v) => v !== undefined && v !== null && v !== "")
