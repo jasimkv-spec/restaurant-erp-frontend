@@ -56,7 +56,32 @@ function statusPill(status: string) {
 // ItemGlMappingPanel, etc.) stay visually consistent with this component.
 export const FIELD_CLASS =
   "w-full rounded-lg border-2 border-gray-300 bg-white px-3 py-2 text-sm text-navy-900 shadow-sm outline-none transition-colors placeholder:text-gray-400 hover:border-gray-400 focus:border-brand-600 focus:ring-4 focus:ring-brand-100";
-export const LABEL_CLASS = "mb-1.5 block text-xs font-semibold text-gray-700";
+export const LABEL_CLASS = "mb-1.5 block text-[13px] font-bold text-navy-900";
+
+// A run of consecutive checkbox fields (e.g. the Sales/Manufacture/Factory/
+// Purchase/POS/Expenses toggles on an item) reads much better as one
+// full-width row of chips than as six separate two-column grid cells
+// scattered through the form. This groups the flat formFields array into
+// renderable chunks without needing screens to opt in explicitly - just
+// place related checkboxes next to each other in the field list.
+type FieldGroup = { kind: "checkboxGroup"; fields: CrudFormField[] } | { kind: "field"; field: CrudFormField };
+
+function groupFormFields(fields: CrudFormField[]): FieldGroup[] {
+  const groups: FieldGroup[] = [];
+  for (const f of fields) {
+    const last = groups[groups.length - 1];
+    if (f.type === "checkbox") {
+      if (last && last.kind === "checkboxGroup") {
+        last.fields.push(f);
+      } else {
+        groups.push({ kind: "checkboxGroup", fields: [f] });
+      }
+    } else {
+      groups.push({ kind: "field", field: f });
+    }
+  }
+  return groups;
+}
 
 /**
  * Generic list + transaction-screen pair for any of the backend's
@@ -199,46 +224,62 @@ export function CrudTable<T extends Record<string, any>>({
             Details
           </div>
           <div className="grid grid-cols-2 gap-4">
-            {formFields.map((f) => (
-              <div key={f.key}>
-                <label className={LABEL_CLASS}>
-                  {f.label}
-                  {f.required && <span className="text-red-500"> *</span>}
-                </label>
-                {f.type === "select" ? (
-                  <select
-                    className={FIELD_CLASS}
-                    value={form[f.key] ?? ""}
-                    onChange={(e) => setForm((prev) => ({ ...prev, [f.key]: e.target.value }))}
-                  >
-                    <option value="">Select...</option>
-                    {f.options?.map((o) => (
-                      <option key={o.value} value={o.value}>
-                        {o.label}
-                      </option>
-                    ))}
-                  </select>
-                ) : f.type === "checkbox" ? (
-                  <label className="flex h-[38px] items-center gap-2 rounded-lg border-2 border-transparent px-0.5 text-sm text-navy-900">
-                    <input
-                      type="checkbox"
-                      checked={!!form[f.key]}
-                      onChange={(e) => setForm((prev) => ({ ...prev, [f.key]: e.target.checked }))}
-                      className="h-4 w-4 cursor-pointer rounded border-2 border-gray-300 text-brand-600 focus:ring-4 focus:ring-brand-100"
-                    />
-                    {form[f.key] ? "Yes" : "No"}
+            {groupFormFields(formFields).map((g, gi) =>
+              g.kind === "checkboxGroup" ? (
+                <div
+                  key={`checkbox-group-${gi}`}
+                  className="col-span-2 flex flex-wrap gap-2 rounded-lg border-2 border-gray-200 bg-gray-50 p-3"
+                >
+                  {g.fields.map((f) => (
+                    <label
+                      key={f.key}
+                      className={`flex cursor-pointer items-center gap-2 rounded-lg border-2 px-3 py-2 text-sm font-semibold transition-colors ${
+                        form[f.key]
+                          ? "border-brand-500 bg-brand-50 text-brand-700"
+                          : "border-gray-300 bg-white text-navy-900 hover:border-gray-400"
+                      }`}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={!!form[f.key]}
+                        onChange={(e) => setForm((prev) => ({ ...prev, [f.key]: e.target.checked }))}
+                        className="h-4 w-4 cursor-pointer rounded border-2 border-gray-300 text-brand-600 focus:ring-4 focus:ring-brand-100"
+                      />
+                      {f.label}
+                    </label>
+                  ))}
+                </div>
+              ) : (
+                <div key={g.field.key}>
+                  <label className={LABEL_CLASS}>
+                    {g.field.label}
+                    {g.field.required && <span className="text-red-500"> *</span>}
                   </label>
-                ) : (
-                  <input
-                    type={f.type}
-                    placeholder={f.placeholder}
-                    className={FIELD_CLASS}
-                    value={form[f.key] ?? ""}
-                    onChange={(e) => setForm((prev) => ({ ...prev, [f.key]: e.target.value }))}
-                  />
-                )}
-              </div>
-            ))}
+                  {g.field.type === "select" ? (
+                    <select
+                      className={FIELD_CLASS}
+                      value={form[g.field.key] ?? ""}
+                      onChange={(e) => setForm((prev) => ({ ...prev, [g.field.key]: e.target.value }))}
+                    >
+                      <option value="">Select...</option>
+                      {g.field.options?.map((o) => (
+                        <option key={o.value} value={o.value}>
+                          {o.label}
+                        </option>
+                      ))}
+                    </select>
+                  ) : (
+                    <input
+                      type={g.field.type}
+                      placeholder={g.field.placeholder}
+                      className={FIELD_CLASS}
+                      value={form[g.field.key] ?? ""}
+                      onChange={(e) => setForm((prev) => ({ ...prev, [g.field.key]: e.target.value }))}
+                    />
+                  )}
+                </div>
+              )
+            )}
           </div>
         </div>
 

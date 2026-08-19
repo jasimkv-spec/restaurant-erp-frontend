@@ -215,7 +215,7 @@ export default function CompanyPolicies() {
             <h3 className="mb-4 text-base font-semibold text-gray-900">New Policy Rule</h3>
             <div className="space-y-4">
               <div>
-                <label className="mb-1 block text-sm font-medium text-gray-700">Policy type *</label>
+                <label className="mb-1 block text-sm font-bold text-navy-900">Policy type *</label>
                 <select
                   className={FIELD_CLASS}
                   value={form.policyType}
@@ -230,7 +230,7 @@ export default function CompanyPolicies() {
               </div>
 
               <div>
-                <label className="mb-1 block text-sm font-medium text-gray-700">Branch (blank = all)</label>
+                <label className="mb-1 block text-sm font-bold text-navy-900">Branch (blank = all)</label>
                 <select
                   className={FIELD_CLASS}
                   value={form.branchId ?? ""}
@@ -246,7 +246,7 @@ export default function CompanyPolicies() {
               </div>
 
               <div>
-                <label className="mb-1 block text-sm font-medium text-gray-700">User (blank = all)</label>
+                <label className="mb-1 block text-sm font-bold text-navy-900">User (blank = all)</label>
                 <select
                   className={FIELD_CLASS}
                   value={form.userId ?? ""}
@@ -262,7 +262,7 @@ export default function CompanyPolicies() {
               </div>
 
               <div>
-                <label className="mb-1 block text-sm font-medium text-gray-700">Role (blank = all)</label>
+                <label className="mb-1 block text-sm font-bold text-navy-900">Role (blank = all)</label>
                 <select
                   className={FIELD_CLASS}
                   value={form.roleId ?? ""}
@@ -279,7 +279,7 @@ export default function CompanyPolicies() {
 
               {selectedType?.hasValue && (
                 <div>
-                  <label className="mb-1 block text-sm font-medium text-gray-700">Value ({selectedType.hasValue})</label>
+                  <label className="mb-1 block text-sm font-bold text-navy-900">Value ({selectedType.hasValue})</label>
                   <input
                     type="number"
                     className={FIELD_CLASS}
@@ -290,7 +290,7 @@ export default function CompanyPolicies() {
               )}
 
               <div>
-                <label className="mb-1 block text-sm font-medium text-gray-700">Allow</label>
+                <label className="mb-1 block text-sm font-bold text-navy-900">Allow</label>
                 <select
                   className={FIELD_CLASS}
                   value={form.allow}

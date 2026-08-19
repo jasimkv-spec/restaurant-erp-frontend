@@ -1,6 +1,7 @@
 import { CrudTable } from "../../components/CrudTable";
 import { useOptions } from "../../lib/useOptions";
 import { ItemGlMappingPanel } from "../../components/ItemGlMappingPanel";
+import { ItemPricesPanel } from "../../components/ItemPricesPanel";
 
 const COSTING_METHODS = ["Weighted Average", "Standard Cost", "FIFO"];
 
@@ -49,15 +50,15 @@ export function ProductItemsView({
       formFields={[
         { key: "code", label: "Code", type: "text", required: true },
         { key: "name", label: "Name", type: "text", required: true },
-        { key: "shortName", label: "Short name (for receipts/kitchen tickets)", type: "text" },
-        { key: "barcode", label: "Barcode", type: "text" },
-        { key: "itemType", label: "Item type", type: "select", required: true, options: itemTypes.map((t) => ({ value: t, label: t })) },
         { key: "forSales", label: "Sales", type: "checkbox" },
         { key: "forManufacture", label: "Manufacture", type: "checkbox" },
         { key: "forFactory", label: "Factory", type: "checkbox" },
         { key: "forPurchase", label: "Purchase", type: "checkbox" },
         { key: "forPos", label: "Point of Sale", type: "checkbox" },
         { key: "forExpense", label: "Expenses", type: "checkbox" },
+        { key: "shortName", label: "Short name (for receipts/kitchen tickets)", type: "text" },
+        { key: "barcode", label: "Barcode", type: "text" },
+        { key: "itemType", label: "Item type", type: "select", required: true, options: itemTypes.map((t) => ({ value: t, label: t })) },
         { key: "categoryId", label: "Category", type: "select", options: categoryOptions },
         { key: "groupId", label: "Product group", type: "select", options: groupOptions },
         { key: "subgroupId", label: "Product subgroup", type: "select", options: subgroupOptions },
@@ -80,7 +81,12 @@ export function ProductItemsView({
         { key: "imageUrl", label: "Image URL", type: "text" },
         { key: "notes", label: "Notes", type: "text" },
       ]}
-      extraPanel={({ editingId }) => <ItemGlMappingPanel itemId={editingId} />}
+      extraPanel={({ editingId }) => (
+        <>
+          <ItemPricesPanel itemId={editingId} />
+          <ItemGlMappingPanel itemId={editingId} />
+        </>
+      )}
     />
   );
 }

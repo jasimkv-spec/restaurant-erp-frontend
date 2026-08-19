@@ -170,7 +170,7 @@ export default function Layout({ children }: { children: ReactNode }) {
   const displayName = user?.displayName ?? user?.email ?? "";
 
   return (
-    <div className="flex min-h-screen bg-gray-100">
+    <div className="flex min-h-screen bg-gradient-to-br from-brand-50 via-white to-brand-100">
       <aside className="flex w-56 shrink-0 flex-col bg-navy-800 px-2.5 py-4">
         <div className="mb-5 flex items-center gap-2 px-2">
           <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-gradient-to-br from-brand-200 to-brand-600 text-sm font-medium text-navy-900">

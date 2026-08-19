@@ -46,7 +46,7 @@ export default function Login() {
             )}
 
             <div>
-              <label className="mb-1.5 block text-sm font-semibold text-gray-700">Tenant code</label>
+              <label className="mb-1.5 block text-sm font-bold text-navy-900">Tenant code</label>
               <input
                 type="text"
                 required
@@ -58,7 +58,7 @@ export default function Login() {
             </div>
 
             <div>
-              <label className="mb-1.5 block text-sm font-semibold text-gray-700">Email</label>
+              <label className="mb-1.5 block text-sm font-bold text-navy-900">Email</label>
               <input
                 type="email"
                 required
@@ -70,7 +70,7 @@ export default function Login() {
             </div>
 
             <div>
-              <label className="mb-1.5 block text-sm font-semibold text-gray-700">Password</label>
+              <label className="mb-1.5 block text-sm font-bold text-navy-900">Password</label>
               <input
                 type="password"
                 required

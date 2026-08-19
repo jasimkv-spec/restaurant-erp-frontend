@@ -160,7 +160,7 @@ export default function FinancialPeriods() {
             <h3 className="text-base font-semibold text-gray-900 mb-4">New Financial Period</h3>
             <div className="space-y-4">
               <div>
-                <label className="mb-1 block text-sm font-medium text-gray-700">Company *</label>
+                <label className="mb-1 block text-sm font-bold text-navy-900">Company *</label>
                 <select
                   className={FIELD_CLASS}
                   value={form.companyId ?? ""}
@@ -174,7 +174,7 @@ export default function FinancialPeriods() {
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="mb-1 block text-sm font-medium text-gray-700">Fiscal year *</label>
+                  <label className="mb-1 block text-sm font-bold text-navy-900">Fiscal year *</label>
                   <input
                     type="number"
                     className={FIELD_CLASS}
@@ -183,7 +183,7 @@ export default function FinancialPeriods() {
                   />
                 </div>
                 <div>
-                  <label className="mb-1 block text-sm font-medium text-gray-700">Month (1-12) *</label>
+                  <label className="mb-1 block text-sm font-bold text-navy-900">Month (1-12) *</label>
                   <input
                     type="number"
                     min={1}
@@ -195,7 +195,7 @@ export default function FinancialPeriods() {
                 </div>
               </div>
               <div>
-                <label className="mb-1 block text-sm font-medium text-gray-700">Start date *</label>
+                <label className="mb-1 block text-sm font-bold text-navy-900">Start date *</label>
                 <input
                   type="date"
                   className={FIELD_CLASS}
@@ -204,7 +204,7 @@ export default function FinancialPeriods() {
                 />
               </div>
               <div>
-                <label className="mb-1 block text-sm font-medium text-gray-700">End date *</label>
+                <label className="mb-1 block text-sm font-bold text-navy-900">End date *</label>
                 <input
                   type="date"
                   className={FIELD_CLASS}
