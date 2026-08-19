@@ -1,5 +1,5 @@
 import { useEffect, useState, type ReactNode } from "react";
-import { ArrowLeft, ChevronRight, Plus } from "lucide-react";
+import { ArrowLeft, ChevronRight, Plus, Search, FileSpreadsheet, FileText } from "lucide-react";
 import { api, ApiError, type ListResponse } from "../lib/apiClient";
 import { DocumentAttachments } from "./DocumentAttachments";
 
@@ -111,12 +111,24 @@ export function CrudTable<T extends Record<string, any>>({
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [togglingStatus, setTogglingStatus] = useState(false);
+  const [search, setSearch] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
+
+  // Debounced so every keystroke doesn't fire a request - the backend
+  // already does an OR-contains search on code/name (see crudFactory.ts's
+  // GET / handler), this just wires a box to it.
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(search), 300);
+    return () => clearTimeout(t);
+  }, [search]);
 
   async function load() {
     setLoading(true);
     setError(null);
     try {
-      const query = `pageSize=200${extraQuery ? `&${extraQuery}` : ""}`;
+      const query = `pageSize=200${extraQuery ? `&${extraQuery}` : ""}${
+        debouncedSearch ? `&search=${encodeURIComponent(debouncedSearch)}` : ""
+      }`;
       const res = await api.get<ListResponse<T>>(`${basePath}?${query}`);
       setRows(res.data);
     } catch (err) {
@@ -130,13 +142,68 @@ export function CrudTable<T extends Record<string, any>>({
     load();
     setView("list");
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [basePath, extraQuery]);
+  }, [basePath, extraQuery, debouncedSearch]);
 
   const singular = title.replace(/s$/, "");
   const statusCol = columns.find((c) => c.key === "status");
-  const badgeCol = columns[0];
   const titleCol = columns[1] ?? columns[0];
-  const subCols = columns.filter((c) => c !== badgeCol && c !== titleCol && c !== statusCol);
+
+  function exportText(col: CrudColumn<T>, row: T): string {
+    const val = col.render ? col.render(row) : row[col.key];
+    if (val === undefined || val === null || val === "") return "";
+    return String(val);
+  }
+
+  function exportCsv() {
+    const headerLine = columns.map((c) => `"${c.label.replace(/"/g, '""')}"`).join(",");
+    const lines = rows.map((row) =>
+      columns.map((c) => `"${exportText(c, row).replace(/"/g, '""')}"`).join(",")
+    );
+    const csv = [headerLine, ...lines].join("\r\n");
+    const blob = new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${title.replace(/\s+/g, "-").toLowerCase()}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  }
+
+  function exportPdf() {
+    const win = window.open("", "_blank");
+    if (!win) return;
+    const headerCells = columns
+      .map((c) => `<th style="padding:6px 10px;border:1px solid #ddd;background:#f3f4f6;text-align:left;">${c.label}</th>`)
+      .join("");
+    const bodyRows = rows
+      .map(
+        (row) =>
+          `<tr>${columns
+            .map((c) => `<td style="padding:6px 10px;border:1px solid #ddd;">${exportText(c, row) || "-"}</td>`)
+            .join("")}</tr>`
+      )
+      .join("");
+    win.document.write(`
+      <html>
+        <head>
+          <title>${title}</title>
+          <style>body{font-family:Arial,Helvetica,sans-serif;padding:24px;} table{border-collapse:collapse;width:100%;font-size:12px;} h2{margin-bottom:4px;}</style>
+        </head>
+        <body>
+          <h2>${title}</h2>
+          <table>
+            <thead><tr>${headerCells}</tr></thead>
+            <tbody>${bodyRows}</tbody>
+          </table>
+        </body>
+      </html>
+    `);
+    win.document.close();
+    win.focus();
+    win.print();
+  }
 
   function openCreate() {
     setEditingId(null);
@@ -327,52 +394,108 @@ export function CrudTable<T extends Record<string, any>>({
       <h2 className="text-xl font-semibold text-navy-900">{title}</h2>
       {description && <p className="mb-4 mt-1 text-xs text-gray-500">{description}</p>}
 
-      <button
-        onClick={openCreate}
-        className="mb-4 flex items-center gap-1.5 rounded-lg bg-brand-600 px-3.5 py-2 text-xs font-semibold text-white shadow-sm transition-colors hover:bg-brand-700"
-      >
-        <Plus size={14} />
-        Add {singular}
-      </button>
+      <div className="mb-4 flex flex-wrap items-center gap-2">
+        <button
+          onClick={openCreate}
+          className="flex items-center gap-1.5 rounded-lg bg-brand-600 px-3.5 py-2 text-xs font-semibold text-white shadow-sm transition-colors hover:bg-brand-700"
+        >
+          <Plus size={14} />
+          Add {singular}
+        </button>
+
+        <div className="relative">
+          <Search size={14} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
+          <input
+            type="text"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search code or name..."
+            className="w-56 rounded-lg border-2 border-gray-300 bg-white py-2 pl-8 pr-3 text-xs text-navy-900 shadow-sm outline-none transition-colors placeholder:text-gray-400 hover:border-gray-400 focus:border-brand-600 focus:ring-4 focus:ring-brand-100"
+          />
+        </div>
+
+        <div className="ml-auto flex items-center gap-2">
+          <button
+            onClick={exportCsv}
+            disabled={rows.length === 0}
+            className="flex items-center gap-1.5 rounded-lg border-2 border-gray-300 px-3 py-2 text-xs font-semibold text-navy-900 transition-colors hover:border-gray-400 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
+            title="Export the current list to Excel (CSV)"
+          >
+            <FileSpreadsheet size={14} />
+            Excel
+          </button>
+          <button
+            onClick={exportPdf}
+            disabled={rows.length === 0}
+            className="flex items-center gap-1.5 rounded-lg border-2 border-gray-300 px-3 py-2 text-xs font-semibold text-navy-900 transition-colors hover:border-gray-400 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
+            title="Print/save the current list as a PDF"
+          >
+            <FileText size={14} />
+            PDF
+          </button>
+        </div>
+      </div>
 
       {error && (
         <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div>
       )}
 
-      <div className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
+      <div className="overflow-x-auto rounded-xl border border-gray-200 bg-white shadow-sm">
         {loading ? (
           <div className="px-4 py-6 text-center text-sm text-gray-400">Loading...</div>
         ) : rows.length === 0 ? (
           <div className="px-4 py-6 text-center text-sm text-gray-400">Nothing here yet.</div>
         ) : (
-          rows.map((row, i) => (
-            <div
-              key={row.id}
-              onClick={() => openEdit(row)}
-              className={`group flex cursor-pointer items-center gap-3 border-l-4 border-l-transparent px-4 py-3 transition-colors hover:border-l-brand-500 hover:bg-brand-50 ${
-                i > 0 ? "border-t border-gray-100" : ""
-              }`}
-            >
-              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-brand-200 to-brand-600 text-[11px] font-semibold text-navy-900">
-                {String(row[badgeCol.key] ?? "?").slice(0, 3).toUpperCase()}
-              </div>
-              <div className="min-w-0 flex-1">
-                <div className="truncate text-sm font-medium text-navy-900">
-                  {titleCol.render ? titleCol.render(row) : String(row[titleCol.key] ?? "-")}
-                </div>
-                {subCols.length > 0 && (
-                  <div className="truncate text-[11px] text-gray-500">
-                    {subCols
-                      .map((c) => (c.render ? c.render(row) : row[c.key]))
-                      .filter((v) => v !== undefined && v !== null && v !== "")
-                      .join(" · ")}
-                  </div>
-                )}
-              </div>
-              {statusCol && statusPill(String(row[statusCol.key] ?? ""))}
-              <ChevronRight size={16} className="shrink-0 text-gray-300 transition-colors group-hover:text-brand-600" />
-            </div>
-          ))
+          <table className="min-w-full divide-y divide-gray-200">
+            <thead className="bg-gray-100">
+              <tr>
+                {columns.map((c) => (
+                  <th
+                    key={c.key}
+                    className="whitespace-nowrap px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-gray-600"
+                  >
+                    {c.label}
+                  </th>
+                ))}
+                <th className="w-8 px-2 py-2.5"></th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-100">
+              {rows.map((row) => (
+                <tr
+                  key={row.id}
+                  onClick={() => openEdit(row)}
+                  className="group cursor-pointer transition-colors hover:bg-brand-50"
+                >
+                  {columns.map((c, ci) => {
+                    const value = c.render ? c.render(row) : row[c.key];
+                    return (
+                      <td
+                        key={c.key}
+                        className={`max-w-xs truncate px-4 py-2.5 text-sm ${
+                          ci === 0
+                            ? "border-l-4 border-l-transparent font-medium text-navy-900 group-hover:border-l-brand-500"
+                            : "text-gray-600"
+                        }`}
+                      >
+                        {c === statusCol
+                          ? statusPill(String(value ?? ""))
+                          : value === undefined || value === null || value === ""
+                          ? "-"
+                          : String(value)}
+                      </td>
+                    );
+                  })}
+                  <td className="px-2 py-2.5">
+                    <ChevronRight
+                      size={16}
+                      className="shrink-0 text-gray-300 transition-colors group-hover:text-brand-600"
+                    />
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         )}
       </div>
     </div>

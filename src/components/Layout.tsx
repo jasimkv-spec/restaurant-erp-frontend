@@ -152,10 +152,14 @@ function initials(name: string) {
 export default function Layout({ children }: { children: ReactNode }) {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
-  const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({ setup: true });
+  // Accordion, not independent toggles - only one group open at a time, so
+  // opening a new one doesn't leave the previous group's items still
+  // expanded above it (which pushed the new group's items off-screen and
+  // forced scrolling to find them).
+  const [openGroup, setOpenGroup] = useState<string | null>("setup");
 
   function toggleGroup(key: string) {
-    setOpenGroups((prev) => ({ ...prev, [key]: !prev[key] }));
+    setOpenGroup((prev) => (prev === key ? null : key));
   }
 
   function handleLogout() {
@@ -183,7 +187,7 @@ export default function Layout({ children }: { children: ReactNode }) {
         <nav className="flex-1 space-y-0.5 overflow-y-auto">
           {NAV.map((group) => {
             const GroupIcon = group.icon;
-            const isOpen = !!openGroups[group.key];
+            const isOpen = openGroup === group.key;
             return (
               <div key={group.key} className="mb-0.5">
                 <button
