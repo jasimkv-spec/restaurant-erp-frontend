@@ -23,6 +23,7 @@ export default function MasterSeries() {
             { value: "Vendor", label: "Vendor" },
             { value: "Customer", label: "Customer" },
             { value: "Employee", label: "Employee" },
+            { value: "Item", label: "Item (Product code)" },
           ],
         },
         {

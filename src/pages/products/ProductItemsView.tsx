@@ -60,7 +60,7 @@ export function ProductItemsView({
         { key: "status", label: "Status" },
       ]}
       formFields={[
-        { key: "code", label: "Code", type: "text", required: true },
+        { key: "code", label: "Code", type: "text", placeholder: "Leave blank to auto-generate, e.g. ITM0001" },
         { key: "name", label: "Name", type: "text", required: true },
         { key: "forSales", label: "Sales", type: "checkbox" },
         { key: "forManufacture", label: "Manufacture", type: "checkbox" },
