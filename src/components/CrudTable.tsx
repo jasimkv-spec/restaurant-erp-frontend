@@ -248,7 +248,12 @@ export function CrudTable<T extends Record<string, any>>({
     try {
       const payload: Record<string, any> = {};
       for (const f of formFields) {
-        if (form[f.key] === "" || form[f.key] === undefined) continue;
+        // null shows up here whenever an existing record's optional field was
+        // never filled in (loaded straight from the DB into form state) -
+        // treat it the same as blank/untouched rather than sending it back
+        // as a literal null, which most optional Zod fields reject outright
+        // (z.string().optional() accepts undefined, not null).
+        if (form[f.key] === "" || form[f.key] === undefined || form[f.key] === null) continue;
         payload[f.key] = f.type === "number" ? Number(form[f.key]) : form[f.key];
       }
       if (editingId) {
