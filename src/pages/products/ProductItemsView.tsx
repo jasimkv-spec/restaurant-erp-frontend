@@ -2,6 +2,18 @@ import { CrudTable } from "../../components/CrudTable";
 import { useOptions } from "../../lib/useOptions";
 import { ItemGlMappingPanel } from "../../components/ItemGlMappingPanel";
 import { ItemPricesPanel } from "../../components/ItemPricesPanel";
+import { ItemVendorPanel } from "../../components/ItemVendorPanel";
+import { ItemBranchOrderQtyPanel } from "../../components/ItemBranchOrderQtyPanel";
+import { ItemSalesHistoryPanel } from "../../components/ItemSalesHistoryPanel";
+import { ItemRecipePanel } from "../../components/ItemRecipePanel";
+
+// Recipe/BOM only makes sense for something actually built from other
+// items - shown when the item type suggests that, or when Manufacture/
+// Factory is switched on, regardless of type.
+const RECIPE_RELEVANT_TYPES = new Set(["Menu", "Semi-finished", "Finished", "Packaging"]);
+function showsRecipePanel(form: Record<string, any>) {
+  return RECIPE_RELEVANT_TYPES.has(form.itemType) || !!form.forManufacture || !!form.forFactory;
+}
 
 const COSTING_METHODS = ["Weighted Average", "Standard Cost", "FIFO"];
 
@@ -81,9 +93,13 @@ export function ProductItemsView({
         { key: "imageUrl", label: "Image URL", type: "text" },
         { key: "notes", label: "Notes", type: "text" },
       ]}
-      extraPanel={({ editingId }) => (
+      extraPanel={({ editingId, form }) => (
         <>
           <ItemPricesPanel itemId={editingId} />
+          <ItemVendorPanel itemId={editingId} />
+          <ItemBranchOrderQtyPanel itemId={editingId} />
+          <ItemSalesHistoryPanel itemId={editingId} />
+          {showsRecipePanel(form) && <ItemRecipePanel itemId={editingId} />}
           <ItemGlMappingPanel itemId={editingId} />
         </>
       )}

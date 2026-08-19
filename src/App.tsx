@@ -35,8 +35,6 @@ import ProductSubgroups from "./pages/products/ProductSubgroups";
 import ProductFamilies from "./pages/products/ProductFamilies";
 import Brands from "./pages/products/Brands";
 import PriceGroups from "./pages/products/PriceGroups";
-import ItemPrices from "./pages/products/ItemPrices";
-import ItemVendorMappings from "./pages/products/ItemVendorMappings";
 
 function RequireAuth({ children }: { children: ReactNode }) {
   const { isAuthenticated } = useAuth();
@@ -86,8 +84,6 @@ export default function App() {
           <Route path="/products/product-families" element={<RequireAuth><ProductFamilies /></RequireAuth>} />
           <Route path="/products/brands" element={<RequireAuth><Brands /></RequireAuth>} />
           <Route path="/products/price-groups" element={<RequireAuth><PriceGroups /></RequireAuth>} />
-          <Route path="/products/item-prices" element={<RequireAuth><ItemPrices /></RequireAuth>} />
-          <Route path="/products/item-vendor-mappings" element={<RequireAuth><ItemVendorMappings /></RequireAuth>} />
 
           <Route path="/" element={<Navigate to="/setup/companies" replace />} />
           <Route path="*" element={<Navigate to="/setup/companies" replace />} />
