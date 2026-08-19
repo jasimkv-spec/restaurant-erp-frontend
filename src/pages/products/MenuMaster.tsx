@@ -7,7 +7,7 @@ export default function MenuMaster() {
       description="Customer-facing menu items - what shows up on the menu, POS, and sales/delivery channels."
       itemTypes={["Sellable", "Menu"]}
       defaultItemType="Sellable"
-      codePlaceholder="Leave blank to auto-generate, e.g. MEN0001"
+      seriesEntityType="MenuItem"
     />
   );
 }

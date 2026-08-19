@@ -16,6 +16,8 @@ export interface CrudFormField {
   required?: boolean;
   options?: { value: string; label: string }[];
   placeholder?: string;
+  /** Locks the field read-only, e.g. a code field while its Master Series is set to Auto - see useCodeLock.ts. */
+  disabled?: boolean;
 }
 
 interface CrudTableProps<T extends Record<string, any>> {
@@ -324,8 +326,9 @@ export function CrudTable<T extends Record<string, any>>({
                   </label>
                   {g.field.type === "select" ? (
                     <select
-                      className={FIELD_CLASS}
+                      className={`${FIELD_CLASS} ${g.field.disabled ? "cursor-not-allowed bg-gray-100 text-gray-500" : ""}`}
                       value={form[g.field.key] ?? ""}
+                      disabled={g.field.disabled}
                       onChange={(e) => setForm((prev) => ({ ...prev, [g.field.key]: e.target.value }))}
                     >
                       <option value="">Select...</option>
@@ -339,8 +342,9 @@ export function CrudTable<T extends Record<string, any>>({
                     <input
                       type={g.field.type}
                       placeholder={g.field.placeholder}
-                      className={FIELD_CLASS}
+                      className={`${FIELD_CLASS} ${g.field.disabled ? "cursor-not-allowed bg-gray-100 text-gray-500" : ""}`}
                       value={form[g.field.key] ?? ""}
+                      disabled={g.field.disabled}
                       onChange={(e) => setForm((prev) => ({ ...prev, [g.field.key]: e.target.value }))}
                     />
                   )}

@@ -1,5 +1,6 @@
 import { CrudTable } from "../../components/CrudTable";
 import { useOptions } from "../../lib/useOptions";
+import { useCodeLock } from "../../lib/useCodeLock";
 
 export default function Vendors() {
   const countryOptions = useOptions("/api/masters/countries", (c) => `${c.code} - ${c.name}`);
@@ -7,6 +8,7 @@ export default function Vendors() {
   const areaOptions = useOptions("/api/masters/areas", (a) => a.name);
   const currencyOptions = useOptions("/api/masters/currencies", (c) => `${c.code} - ${c.name}`);
   const termsOptions = useOptions("/api/masters/terms", (t) => `${t.code} - ${t.name}`);
+  const { locked: codeLocked, prefix: codePrefix } = useCodeLock("Vendor");
 
   return (
     <CrudTable
@@ -22,7 +24,15 @@ export default function Vendors() {
         { key: "status", label: "Status" },
       ]}
       formFields={[
-        { key: "code", label: "Code", type: "text", placeholder: "Leave blank to auto-generate, e.g. SUP0001" },
+        {
+          key: "code",
+          label: "Code",
+          type: "text",
+          disabled: codeLocked,
+          placeholder: codeLocked
+            ? `Auto-generated (${codePrefix ?? "SUP"}####)`
+            : "Enter a code, or configure it under Master Series to auto-generate",
+        },
         { key: "name", label: "Name", type: "text", required: true },
         { key: "contactPerson", label: "Contact person", type: "text" },
         { key: "phone", label: "Phone", type: "text" },

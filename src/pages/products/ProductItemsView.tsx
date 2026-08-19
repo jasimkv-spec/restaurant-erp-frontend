@@ -1,5 +1,6 @@
 import { CrudTable } from "../../components/CrudTable";
 import { useOptions } from "../../lib/useOptions";
+import { useCodeLock } from "../../lib/useCodeLock";
 import { ItemGlMappingPanel } from "../../components/ItemGlMappingPanel";
 import { ItemPricesPanel } from "../../components/ItemPricesPanel";
 import { ItemVendorPanel } from "../../components/ItemVendorPanel";
@@ -31,15 +32,16 @@ export function ProductItemsView({
   description,
   itemTypes,
   defaultItemType,
-  codePlaceholder,
+  seriesEntityType,
 }: {
   title: string;
   description: string;
   itemTypes: string[];
   defaultItemType: string;
-  /** e.g. "Leave blank to auto-generate, e.g. RM0001" - each of the three screens has its own Master Series entry (see inventory.routes.ts's ITEM_AUTO_CODE_SERIES), so the hint should match. */
-  codePlaceholder: string;
+  /** "RawMaterial" | "MenuItem" | "Item" - matches inventory.routes.ts's ITEM_AUTO_CODE_SERIES, and the Master Series entry that governs this screen's code field. */
+  seriesEntityType: string;
 }) {
+  const { locked: codeLocked, prefix: codePrefix } = useCodeLock(seriesEntityType);
   const categoryOptions = useOptions("/api/inventory/item-categories", (c) => `${c.code} - ${c.name}`);
   const groupOptions = useOptions("/api/inventory/product-groups", (g) => `${g.code} - ${g.name}`);
   const subgroupOptions = useOptions("/api/inventory/product-subgroups", (s) => `${s.code} - ${s.name}`);
@@ -63,7 +65,15 @@ export function ProductItemsView({
         { key: "status", label: "Status" },
       ]}
       formFields={[
-        { key: "code", label: "Code", type: "text", placeholder: codePlaceholder },
+        {
+          key: "code",
+          label: "Code",
+          type: "text",
+          disabled: codeLocked,
+          placeholder: codeLocked
+            ? `Auto-generated (${codePrefix ?? "..."}####)`
+            : "Enter a code, or configure it under Master Series to auto-generate",
+        },
         { key: "name", label: "Name", type: "text", required: true },
         { key: "forSales", label: "Sales", type: "checkbox" },
         { key: "forManufacture", label: "Manufacture", type: "checkbox" },
