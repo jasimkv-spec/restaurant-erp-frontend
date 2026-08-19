@@ -16,6 +16,8 @@ export interface AuthedUser {
   email: string;
   displayName: string;
   roles: string[];
+  /** Branches this user is explicitly restricted to (UserBranchAccess) - empty/absent means unrestricted (sees every branch). */
+  branches?: { id: string; code: string; name: string }[];
 }
 
 export class ApiError extends Error {

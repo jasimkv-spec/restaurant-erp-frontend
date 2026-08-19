@@ -25,6 +25,8 @@ export interface DocFieldConfig {
   options?: { value: string; label: string }[];
   required?: boolean;
   placeholder?: string;
+  /** Greys the field out and blocks input - e.g. a branch that's auto-selected because the user only has access to one. */
+  disabled?: boolean;
 }
 
 export interface LifecycleStep {
@@ -54,6 +56,25 @@ export function StatusBadge({ status }: { status: string }) {
       }`}
     >
       {status}
+    </span>
+  );
+}
+
+const PRIORITY_STYLES: Record<string, string> = {
+  Low: "bg-gray-100 text-gray-600 border-gray-200",
+  Normal: "bg-brand-50 text-brand-700 border-brand-200",
+  High: "bg-amber-50 text-amber-700 border-amber-200",
+  Urgent: "bg-red-50 text-red-700 border-red-200",
+};
+
+export function PriorityBadge({ priority }: { priority: string }) {
+  return (
+    <span
+      className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-semibold ${
+        PRIORITY_STYLES[priority] ?? "bg-gray-100 text-gray-700 border-gray-200"
+      }`}
+    >
+      {priority}
     </span>
   );
 }
@@ -281,8 +302,9 @@ export function DocumentScreen({
                   </label>
                   {f.type === "select" ? (
                     <select
-                      className={FIELD_CLASS}
+                      className={`${FIELD_CLASS} ${f.disabled ? "bg-gray-100 text-gray-500" : ""}`}
                       value={header[f.key] ?? ""}
+                      disabled={f.disabled}
                       onChange={(e) => setHeader((prev) => ({ ...prev, [f.key]: e.target.value }))}
                     >
                       <option value="">Select...</option>
@@ -295,9 +317,10 @@ export function DocumentScreen({
                   ) : (
                     <input
                       type={f.type === "date" ? "date" : f.type === "number" ? "number" : "text"}
-                      className={FIELD_CLASS}
+                      className={`${FIELD_CLASS} ${f.disabled ? "bg-gray-100 text-gray-500" : ""}`}
                       placeholder={f.placeholder}
                       value={header[f.key] ?? ""}
+                      disabled={f.disabled}
                       onChange={(e) => setHeader((prev) => ({ ...prev, [f.key]: e.target.value }))}
                     />
                   )}
@@ -449,6 +472,11 @@ export function DocumentScreen({
                             {f.label}
                           </th>
                         ))}
+                        {(detail.lines ?? []).some((l: any) => l.baseQty != null) && (
+                          <th className="px-2 pb-2 text-left text-[11px] font-semibold uppercase tracking-wide text-gray-500">
+                            In base unit
+                          </th>
+                        )}
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-100">
@@ -463,6 +491,13 @@ export function DocumentScreen({
                                 : String(line[f.key] ?? "-")}
                             </td>
                           ))}
+                          {(detail.lines ?? []).some((l: any) => l.baseQty != null) && (
+                            <td className="px-2 py-1.5 text-gray-500">
+                              {line.baseQty != null
+                                ? `${line.baseQty} ${line.item?.baseUom?.code ?? ""}`
+                                : "no conversion set up"}
+                            </td>
+                          )}
                         </tr>
                       ))}
                     </tbody>
