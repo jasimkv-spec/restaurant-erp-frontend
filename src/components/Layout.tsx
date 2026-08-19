@@ -121,7 +121,10 @@ const NAV: NavGroup[] = [
     key: "procurement",
     label: "Procurement",
     icon: Truck,
-    items: [{ label: "Vendors", path: "/procurement/vendors", icon: Handshake }],
+    items: [
+      { label: "Vendors", path: "/procurement/vendors", icon: Handshake },
+      { label: "Material Requests", path: "/procurement/material-requests", icon: ClipboardList },
+    ],
   },
   {
     key: "sales",

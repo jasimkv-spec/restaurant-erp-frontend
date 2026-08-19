@@ -1,5 +1,5 @@
 import { useEffect, useState, type ReactNode } from "react";
-import { ArrowLeft, ChevronRight, Plus, Search, FileSpreadsheet, FileText } from "lucide-react";
+import { ArrowLeft, ChevronRight, Plus, Search, FileSpreadsheet, FileText, Trash2 } from "lucide-react";
 import { api, ApiError, type ListResponse } from "../lib/apiClient";
 import { DocumentAttachments } from "./DocumentAttachments";
 
@@ -113,6 +113,8 @@ export function CrudTable<T extends Record<string, any>>({
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [togglingStatus, setTogglingStatus] = useState(false);
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
 
@@ -211,6 +213,7 @@ export function CrudTable<T extends Record<string, any>>({
     setEditingId(null);
     setForm(createDefaults ?? {});
     setFormError(null);
+    setConfirmingDelete(false);
     setView("transaction");
   }
 
@@ -218,10 +221,12 @@ export function CrudTable<T extends Record<string, any>>({
     setEditingId(row.id);
     setForm({ ...row });
     setFormError(null);
+    setConfirmingDelete(false);
     setView("transaction");
   }
 
   function backToList() {
+    setConfirmingDelete(false);
     setView("list");
   }
 
@@ -268,6 +273,27 @@ export function CrudTable<T extends Record<string, any>>({
       setFormError(err instanceof ApiError ? err.message : "Save failed");
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function handleDelete() {
+    if (!editingId) return;
+    setDeleting(true);
+    setFormError(null);
+    try {
+      await api.del(`${basePath}/${editingId}`);
+      setView("list");
+      setConfirmingDelete(false);
+      await load();
+      onChanged?.();
+    } catch (err) {
+      // Most likely the backend's FK-constraint message ("used by one or
+      // more transactions... use Disable instead") - surfaced as-is so the
+      // user knows exactly why and what to do instead.
+      setFormError(err instanceof ApiError ? err.message : "Could not delete this record");
+      setConfirmingDelete(false);
+    } finally {
+      setDeleting(false);
     }
   }
 
@@ -362,6 +388,28 @@ export function CrudTable<T extends Record<string, any>>({
         {attachments && <DocumentAttachments moduleCode={attachments.moduleCode} recordId={editingId} />}
         {extraPanel && editingId && extraPanel({ editingId, form })}
 
+        {confirmingDelete && (
+          <div className="mt-4 flex items-center gap-3 rounded-lg border border-red-200 bg-red-50 px-4 py-3">
+            <span className="text-sm text-red-700">
+              Delete this {singular.toLowerCase()} permanently? This can't be undone - if it's used by any
+              transaction, the delete will be blocked and you'll be told to Disable it instead.
+            </span>
+            <button
+              onClick={handleDelete}
+              disabled={deleting}
+              className="ml-auto shrink-0 rounded-lg bg-red-600 px-3.5 py-1.5 text-xs font-semibold text-white shadow-sm transition-colors hover:bg-red-700 disabled:opacity-50"
+            >
+              {deleting ? "Deleting..." : "Yes, delete"}
+            </button>
+            <button
+              onClick={() => setConfirmingDelete(false)}
+              className="shrink-0 rounded-lg border-2 border-gray-300 bg-white px-3.5 py-1.5 text-xs font-semibold text-navy-900 transition-colors hover:border-gray-400 hover:bg-gray-50"
+            >
+              Cancel
+            </button>
+          </div>
+        )}
+
         <div className="mt-4 flex gap-2">
           <button
             onClick={handleSave}
@@ -391,6 +439,19 @@ export function CrudTable<T extends Record<string, any>>({
                 : String(form[statusCol.key] ?? "").toLowerCase() === "active"
                 ? "Disable"
                 : "Enable"}
+            </button>
+          )}
+          {editingId && (
+            <button
+              onClick={() => setConfirmingDelete(true)}
+              disabled={deleting}
+              title="Delete - blocked automatically if this record is used by any transaction"
+              className={`flex items-center gap-1.5 rounded-lg border-2 border-red-200 px-4 py-2 text-sm font-semibold text-red-600 transition-colors hover:bg-red-50 disabled:opacity-50 ${
+                statusCol ? "" : "ml-auto"
+              }`}
+            >
+              <Trash2 size={14} />
+              Delete
             </button>
           )}
         </div>
