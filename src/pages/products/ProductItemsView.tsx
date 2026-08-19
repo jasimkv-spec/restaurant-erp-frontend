@@ -1,27 +1,29 @@
 import { CrudTable } from "../../components/CrudTable";
 import { useOptions } from "../../lib/useOptions";
-
-const ITEM_TYPES = [
-  "Sellable",
-  "Stock",
-  "Non-stock",
-  "Stationary",
-  "Menu",
-  "Semi-finished",
-  "Finished",
-  "Packaging",
-  "Service",
-  "Spare",
-];
+import { ItemGlMappingPanel } from "../../components/ItemGlMappingPanel";
 
 const COSTING_METHODS = ["Weighted Average", "Standard Cost", "FIFO"];
 
 /**
- * The core product/item master - everything else in Inventory (stock
- * balances, GRNs, recipes, sales, consumption) points back to an Item.
- * New items land as "Draft" (see prisma/schema.prisma) until enabled here.
+ * Shared implementation behind Raw Materials Master, Menu Master, and Item
+ * Master - all three are the same underlying Item table (see
+ * prisma/schema.prisma), just pre-filtered to a different slice of
+ * itemType via the backend's listFilters (see inventory.routes.ts). One
+ * product only ever shows up in exactly one of the three lists, and
+ * everything downstream (recipes, GRN, stock, sales) still points at the
+ * same Item record either way - nothing needed to change there.
  */
-export default function Items() {
+export function ProductItemsView({
+  title,
+  description,
+  itemTypes,
+  defaultItemType,
+}: {
+  title: string;
+  description: string;
+  itemTypes: string[];
+  defaultItemType: string;
+}) {
   const categoryOptions = useOptions("/api/inventory/item-categories", (c) => `${c.code} - ${c.name}`);
   const groupOptions = useOptions("/api/inventory/product-groups", (g) => `${g.code} - ${g.name}`);
   const subgroupOptions = useOptions("/api/inventory/product-subgroups", (s) => `${s.code} - ${s.name}`);
@@ -32,9 +34,11 @@ export default function Items() {
 
   return (
     <CrudTable
-      title="Items"
-      description="The product/item master - every stock movement, recipe, purchase, and sale points back to one of these. New items start as Draft until enabled below."
+      title={title}
+      description={description}
       basePath="/api/inventory/items"
+      extraQuery={`itemType=${itemTypes.join(",")}`}
+      createDefaults={{ itemType: defaultItemType }}
       columns={[
         { key: "code", label: "Code" },
         { key: "name", label: "Name" },
@@ -47,7 +51,13 @@ export default function Items() {
         { key: "name", label: "Name", type: "text", required: true },
         { key: "shortName", label: "Short name (for receipts/kitchen tickets)", type: "text" },
         { key: "barcode", label: "Barcode", type: "text" },
-        { key: "itemType", label: "Item type", type: "select", required: true, options: ITEM_TYPES.map((t) => ({ value: t, label: t })) },
+        { key: "itemType", label: "Item type", type: "select", required: true, options: itemTypes.map((t) => ({ value: t, label: t })) },
+        { key: "forSales", label: "Sales", type: "checkbox" },
+        { key: "forManufacture", label: "Manufacture", type: "checkbox" },
+        { key: "forFactory", label: "Factory", type: "checkbox" },
+        { key: "forPurchase", label: "Purchase", type: "checkbox" },
+        { key: "forPos", label: "Point of Sale", type: "checkbox" },
+        { key: "forExpense", label: "Expenses", type: "checkbox" },
         { key: "categoryId", label: "Category", type: "select", options: categoryOptions },
         { key: "groupId", label: "Product group", type: "select", options: groupOptions },
         { key: "subgroupId", label: "Product subgroup", type: "select", options: subgroupOptions },
@@ -70,6 +80,7 @@ export default function Items() {
         { key: "imageUrl", label: "Image URL", type: "text" },
         { key: "notes", label: "Notes", type: "text" },
       ]}
+      extraPanel={({ editingId }) => <ItemGlMappingPanel itemId={editingId} />}
     />
   );
 }

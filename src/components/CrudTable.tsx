@@ -28,6 +28,12 @@ interface CrudTableProps<T extends Record<string, any>> {
   onChanged?: () => void;
   /** Enables the upload/list/download/delete Attachments panel on the edit screen (new records must be saved first - see DocumentAttachments.tsx). */
   attachments?: { moduleCode: string };
+  /** Renders an arbitrary extra panel below Details on the edit screen (existing records only) - e.g. branch membership on Price Groups, GL account mapping on Items. */
+  extraPanel?: (ctx: { editingId: string; form: Record<string, any> }) => ReactNode;
+  /** Extra query-string fragment (e.g. "itemType=Stock,Semi-finished") applied only to the list GET, never to create/update/delete - lets several screens share one basePath as pre-filtered views of the same table. */
+  extraQuery?: string;
+  /** Prefills the "Add" form instead of starting blank - e.g. defaulting itemType on a pre-filtered screen. */
+  createDefaults?: Record<string, any>;
 }
 
 function statusPill(status: string) {
@@ -58,6 +64,9 @@ export function CrudTable<T extends Record<string, any>>({
   formFields,
   onChanged,
   attachments,
+  extraPanel,
+  extraQuery,
+  createDefaults,
 }: CrudTableProps<T>) {
   const [rows, setRows] = useState<T[]>([]);
   const [loading, setLoading] = useState(true);
@@ -73,7 +82,8 @@ export function CrudTable<T extends Record<string, any>>({
     setLoading(true);
     setError(null);
     try {
-      const res = await api.get<ListResponse<T>>(`${basePath}?pageSize=200`);
+      const query = `pageSize=200${extraQuery ? `&${extraQuery}` : ""}`;
+      const res = await api.get<ListResponse<T>>(`${basePath}?${query}`);
       setRows(res.data);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Failed to load data");
@@ -86,7 +96,7 @@ export function CrudTable<T extends Record<string, any>>({
     load();
     setView("list");
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [basePath]);
+  }, [basePath, extraQuery]);
 
   const singular = title.replace(/s$/, "");
   const statusCol = columns.find((c) => c.key === "status");
@@ -96,7 +106,7 @@ export function CrudTable<T extends Record<string, any>>({
 
   function openCreate() {
     setEditingId(null);
-    setForm({});
+    setForm(createDefaults ?? {});
     setFormError(null);
     setView("transaction");
   }
@@ -215,6 +225,7 @@ export function CrudTable<T extends Record<string, any>>({
         </div>
 
         {attachments && <DocumentAttachments moduleCode={attachments.moduleCode} recordId={editingId} />}
+        {extraPanel && editingId && extraPanel({ editingId, form })}
 
         <div className="mt-4 flex gap-2">
           <button
