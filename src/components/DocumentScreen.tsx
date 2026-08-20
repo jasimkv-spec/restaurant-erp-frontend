@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
-import { ArrowLeft, Pencil, Plus, Trash2 } from "lucide-react";
+import { ArrowLeft, Check, Pencil, Plus, Trash2 } from "lucide-react";
 import { api, ApiError, type ListResponse } from "../lib/apiClient";
 import { FIELD_CLASS, LABEL_CLASS } from "./CrudTable";
+import { DocumentAttachments } from "./DocumentAttachments";
 
 /**
  * Generic screen for transactional documents (Material Request, Purchase
@@ -88,6 +89,38 @@ export function PriorityBadge({ priority }: { priority: string }) {
   );
 }
 
+/** Draft -> Submitted -> Approved style progress strip - the visual cue that this is a workflow document, not a static form. Falls back silently (render nothing) when the current status isn't part of the declared flow (e.g. Rejected/Cancelled side-branches) - the StatusBadge next to the title still covers those. */
+function Stepper({ steps, current }: { steps: string[]; current: string }) {
+  const idx = steps.indexOf(current);
+  if (idx === -1) return null;
+  return (
+    <div className="mb-5 flex items-center rounded-xl border border-gray-200 bg-white px-4 py-3 shadow-sm">
+      {steps.map((s, i) => {
+        const state = i < idx ? "done" : i === idx ? "current" : "upcoming";
+        return (
+          <div key={s} className="flex flex-1 items-center last:flex-none">
+            <div
+              className={`flex items-center gap-1.5 whitespace-nowrap rounded-full px-3 py-1 text-[11px] font-semibold ${
+                state === "done"
+                  ? "bg-emerald-50 text-emerald-700"
+                  : state === "current"
+                    ? "bg-brand-600 text-white"
+                    : "bg-gray-100 text-gray-400"
+              }`}
+            >
+              {state === "done" && <Check size={11} />}
+              {s}
+            </div>
+            {i < steps.length - 1 && (
+              <div className={`mx-2 h-px flex-1 ${i < idx ? "bg-emerald-300" : "bg-gray-200"}`} />
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 /** "2026-08-19T12:00:00.000Z" -> "2026-08-19", so it can seed an <input type="date">. Passes through anything that isn't a parseable date untouched. */
 function toDateInputValue(value: any): string {
   if (!value) return "";
@@ -115,6 +148,10 @@ function resolveDisplayValue(f: DocFieldConfig, row: Record<string, any>): strin
   return f.options?.find((o) => o.value === row[f.key])?.label ?? row[f.key] ?? "-";
 }
 
+function sumNumericField(rows: Record<string, any>[], key: string): number {
+  return rows.reduce((sum, r) => sum + (Number(r[key]) || 0), 0);
+}
+
 export function DocumentScreen({
   title,
   description,
@@ -128,6 +165,8 @@ export function DocumentScreen({
   editableStatuses = ["Draft"],
   deletableStatuses = ["Draft"],
   onLineFieldChange,
+  attachmentsModuleCode,
+  statusFlow,
 }: {
   title: string;
   description: string;
@@ -144,6 +183,10 @@ export function DocumentScreen({
   deletableStatuses?: string[];
   /** Fires after any line field changes, with the row's latest values - lets the caller react (e.g. fetch that item's packing-unit options when itemId changes). */
   onLineFieldChange?: (index: number, key: string, value: any, row: Record<string, any>) => void;
+  /** Passed straight to DocumentAttachments as moduleCode - opts this document into the same upload/download/delete panel Vendors/Customers use. Omit to leave attachments off for a screen that doesn't need them. */
+  attachmentsModuleCode?: string;
+  /** Ordered list of statuses that make up the normal happy-path (e.g. ["Draft","Submitted","Approved"]) - renders as a progress stepper in the detail view. Side-branch statuses like Rejected/Cancelled just fall back to the plain badge. */
+  statusFlow?: string[];
 }) {
   const [view, setView] = useState<"list" | "form" | "detail">("list");
   const [rows, setRows] = useState<any[]>([]);
@@ -301,9 +344,15 @@ export function DocumentScreen({
     if (step.confirmMessage && !window.confirm(step.confirmMessage)) return;
     setActionBusy(step.action);
     setError(null);
+    const id = detail.id;
     try {
-      const updated = await api.post<any>(`${basePath}/${detail.id}/${step.action}`, {});
-      setDetail(updated);
+      await api.post<any>(`${basePath}/${id}/${step.action}`, {});
+      // Re-fetch via GET /:id rather than trusting the action route's own
+      // response body - some lifecycle routes (submit especially) return a
+      // bare record without the relations the GET endpoint includes, which
+      // would otherwise make lines/requester/branch flicker away right
+      // after the click.
+      await openDetail(id);
       await load();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : `Could not ${step.label.toLowerCase()}`);
@@ -360,6 +409,8 @@ export function DocumentScreen({
   }
 
   const hasBaseQty = (detail?.lines ?? []).some((l: any) => l.baseQty != null);
+  const hasNumericLine = lineFields.some((f) => f.type === "number");
+  const docNo = detail && (detail.mrNo ?? detail.poNo ?? detail.grnNo ?? detail.transferNo ?? detail.adjustmentNo ?? detail.id);
 
   return (
     <div className="mx-auto max-w-6xl">
@@ -434,16 +485,25 @@ export function DocumentScreen({
             <ArrowLeft size={16} />
             Back to list
           </button>
-          <h1 className="mb-1 text-xl font-bold text-navy-900">
-            {editingId ? `Edit ${title.replace(/s$/, "")}` : `New ${title.replace(/s$/, "")}`}
-          </h1>
-          <p className="mb-5 text-sm text-gray-500">{description}</p>
+          <div className="mb-5 flex items-center justify-between rounded-xl border border-gray-200 bg-white px-4 py-3 shadow-sm">
+            <div>
+              <h1 className="text-xl font-bold text-navy-900">
+                {editingId ? `Edit ${title.replace(/s$/, "")}` : `New ${title.replace(/s$/, "")}`}
+              </h1>
+              <p className="mt-0.5 text-sm text-gray-500">{description}</p>
+            </div>
+            {/* Edit is only reachable from a Draft record (see editableStatuses), and a brand-new document always starts life as Draft too. */}
+            <StatusBadge status="Draft" />
+          </div>
 
           {error && (
             <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div>
           )}
 
           <div className="mb-5 rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
+            <div className="mb-3 border-b border-gray-100 pb-2 text-[11px] font-semibold uppercase tracking-wide text-brand-700">
+              Document Details
+            </div>
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
               {headerFields.map((f) => (
                 <div key={f.key} className={f.type === "textarea" ? "sm:col-span-2 lg:col-span-3" : ""}>
@@ -459,7 +519,7 @@ export function DocumentScreen({
 
           <div className="mb-5 rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
             <div className="mb-3 flex items-center justify-between border-b border-gray-100 pb-2">
-              <div className="text-[11px] font-semibold uppercase tracking-wide text-brand-700">Lines</div>
+              <div className="text-[11px] font-semibold uppercase tracking-wide text-brand-700">Line Items</div>
               <button
                 onClick={addLine}
                 className="flex items-center gap-1 rounded-lg border border-brand-200 bg-brand-50 px-2.5 py-1 text-xs font-semibold text-brand-700 hover:bg-brand-100"
@@ -473,6 +533,7 @@ export function DocumentScreen({
               <table className="w-full text-sm">
                 <thead>
                   <tr>
+                    <th className="w-8 px-2 pb-2 text-left text-[11px] font-semibold uppercase tracking-wide text-gray-500">#</th>
                     {lineFields.map((f) => (
                       <th key={f.key} className="px-2 pb-2 text-left text-[11px] font-semibold uppercase tracking-wide text-gray-500">
                         {f.label}
@@ -484,6 +545,7 @@ export function DocumentScreen({
                 <tbody className="divide-y divide-gray-100">
                   {lines.map((line, i) => (
                     <tr key={i}>
+                      <td className="px-2 py-1.5 text-xs text-gray-400">{i + 1}</td>
                       {lineFields.map((f) => (
                         <td key={f.key} className="px-2 py-1.5">
                           {renderFieldInput(f, line, (value) => setLineValue(i, f.key, value), f.optionsForRow?.(line))}
@@ -501,6 +563,19 @@ export function DocumentScreen({
                     </tr>
                   ))}
                 </tbody>
+                {hasNumericLine && (
+                  <tfoot>
+                    <tr className="border-t-2 border-gray-200">
+                      <td className="px-2 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-gray-500">Total</td>
+                      {lineFields.map((f) => (
+                        <td key={f.key} className="px-2 py-1.5 text-sm font-semibold text-navy-900">
+                          {f.type === "number" ? sumNumericField(lines, f.key) : ""}
+                        </td>
+                      ))}
+                      <td></td>
+                    </tr>
+                  </tfoot>
+                )}
               </table>
             </div>
           </div>
@@ -537,7 +612,7 @@ export function DocumentScreen({
             <>
               <div className="mb-5 flex items-center justify-between">
                 <div className="flex items-center gap-3">
-                  <h1 className="text-xl font-bold text-navy-900">{detail.mrNo ?? detail.poNo ?? detail.grnNo ?? detail.transferNo ?? detail.adjustmentNo ?? detail.id}</h1>
+                  <h1 className="text-xl font-bold text-navy-900">{docNo}</h1>
                   {detail.title && <span className="text-sm text-gray-500">- {detail.title}</span>}
                   <StatusBadge status={detail.status} />
                 </div>
@@ -575,6 +650,8 @@ export function DocumentScreen({
                 </div>
               </div>
 
+              {statusFlow && <Stepper steps={statusFlow} current={detail.status} />}
+
               {confirmingDelete && (
                 <div className="mb-5 flex items-center justify-between rounded-lg border border-red-200 bg-red-50 px-4 py-3">
                   <div className="text-sm text-red-700">Delete this document permanently? This can't be undone.</div>
@@ -607,12 +684,36 @@ export function DocumentScreen({
                 ))}
               </div>
 
+              {(detail.requester || detail.approvedBy || detail.createdAt) && (
+                <div className="mb-5 flex flex-wrap gap-x-8 gap-y-2 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-xs">
+                  {detail.requester && (
+                    <div>
+                      <span className="font-semibold uppercase tracking-wide text-gray-500">Created by </span>
+                      <span className="text-navy-900">{detail.requester.displayName}</span>
+                    </div>
+                  )}
+                  {detail.createdAt && (
+                    <div>
+                      <span className="font-semibold uppercase tracking-wide text-gray-500">Created on </span>
+                      <span className="text-navy-900">{new Date(detail.createdAt).toLocaleString()}</span>
+                    </div>
+                  )}
+                  {detail.approvedBy && (
+                    <div>
+                      <span className="font-semibold uppercase tracking-wide text-gray-500">Approved by </span>
+                      <span className="text-navy-900">{detail.approvedBy.displayName}</span>
+                    </div>
+                  )}
+                </div>
+              )}
+
               <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
-                <div className="mb-3 border-b border-gray-100 pb-2 text-[11px] font-semibold uppercase tracking-wide text-brand-700">Lines</div>
+                <div className="mb-3 border-b border-gray-100 pb-2 text-[11px] font-semibold uppercase tracking-wide text-brand-700">Line Items</div>
                 <div className="overflow-x-auto">
                   <table className="w-full text-sm">
                     <thead>
                       <tr>
+                        <th className="w-8 px-2 pb-2 text-left text-[11px] font-semibold uppercase tracking-wide text-gray-500">#</th>
                         {lineFields.map((f) => (
                           <th key={f.key} className="px-2 pb-2 text-left text-[11px] font-semibold uppercase tracking-wide text-gray-500">
                             {f.label}
@@ -628,6 +729,7 @@ export function DocumentScreen({
                     <tbody className="divide-y divide-gray-100">
                       {(detail.lines ?? []).map((line: any, i: number) => (
                         <tr key={line.id ?? i}>
+                          <td className="px-2 py-1.5 text-xs text-gray-400">{i + 1}</td>
                           {lineFields.map((f) => (
                             <td key={f.key} className="px-2 py-1.5 text-navy-900">
                               {f.type === "readonly"
@@ -647,9 +749,24 @@ export function DocumentScreen({
                         </tr>
                       ))}
                     </tbody>
+                    {hasNumericLine && (
+                      <tfoot>
+                        <tr className="border-t-2 border-gray-200">
+                          <td className="px-2 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-gray-500">Total</td>
+                          {lineFields.map((f) => (
+                            <td key={f.key} className="px-2 py-1.5 text-sm font-semibold text-navy-900">
+                              {f.type === "number" ? sumNumericField(detail.lines ?? [], f.key) : ""}
+                            </td>
+                          ))}
+                          {hasBaseQty && <td></td>}
+                        </tr>
+                      </tfoot>
+                    )}
                   </table>
                 </div>
               </div>
+
+              {attachmentsModuleCode && <DocumentAttachments moduleCode={attachmentsModuleCode} recordId={detail.id} />}
             </>
           )}
         </>

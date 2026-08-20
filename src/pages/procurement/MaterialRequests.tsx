@@ -88,6 +88,7 @@ export default function MaterialRequests() {
         { key: "priority", label: "Priority", render: (r) => <PriorityBadge priority={r.priority ?? "Normal"} /> },
         { key: "branch", label: "Branch", render: (r) => (r.branch ? `${r.branch.code} - ${r.branch.name}` : "-") },
         { key: "requestDate", label: "Date", render: (r) => (r.requestDate ? new Date(r.requestDate).toLocaleDateString() : "-") },
+        { key: "requester", label: "Created by", render: (r) => r.requester?.displayName ?? "-" },
         { key: "lines", label: "Lines", render: (r) => r.lines?.length ?? 0 },
         { key: "status", label: "Status" },
       ]}
@@ -147,6 +148,8 @@ export default function MaterialRequests() {
         { fromStatus: "Draft", action: "submit", label: "Submit for Approval" },
         { fromStatus: "Submitted", action: "approve", label: "Approve", confirmMessage: "Approve this material request as requested?" },
       ]}
+      statusFlow={["Draft", "Submitted", "Approved"]}
+      attachmentsModuleCode="Procurement.MaterialRequest"
     />
   );
 }
