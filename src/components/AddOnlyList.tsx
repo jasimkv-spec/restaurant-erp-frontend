@@ -10,14 +10,20 @@ interface AddOnlyListProps<T extends Record<string, any>> {
   columns: CrudColumn<T>[];
   formFields: CrudFormField[];
   onChanged?: () => void;
+  /** Opts into click-a-row-to-edit (PUT {basePath}/:id) - off by default since most reference lists (Currencies, Banks, Countries, Cities) genuinely have no edit endpoint. Turn on only where the backend actually supports it (e.g. UOM Conversions). */
+  editable?: boolean;
+  /** Optional live summary of the form's current values, shown as a highlighted line above Save - e.g. "1 Box = 12 Piece" while configuring a UOM conversion, so the direction is unambiguous before saving. */
+  previewText?: (form: Record<string, any>) => string | null;
 }
 
 /**
- * For reference lists the backend only exposes GET/POST on (Currencies,
- * Banks, Countries, Cities, UOM Conversions) - there is no edit endpoint,
- * by design, since these are shared/global lookups rather than
- * tenant-owned records. Same list-plus-transaction-screen visual language
- * as CrudTable, just without the click-a-row-to-edit affordance.
+ * For reference lists the backend mostly only exposes GET/POST on
+ * (Currencies, Banks, Countries, Cities) - there is no edit endpoint for
+ * those, by design, since they're shared/global lookups rather than
+ * tenant-owned records. UOM Conversions is the exception (editable=true) -
+ * getting a conversion factor wrong is common enough to fix in place that
+ * it earned a real PUT route. Same list-plus-transaction-screen visual
+ * language as CrudTable either way.
  */
 export function AddOnlyList<T extends Record<string, any>>({
   title,
@@ -26,11 +32,14 @@ export function AddOnlyList<T extends Record<string, any>>({
   columns,
   formFields,
   onChanged,
+  editable = false,
+  previewText,
 }: AddOnlyListProps<T>) {
   const [rows, setRows] = useState<T[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [view, setView] = useState<"list" | "transaction">("list");
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState<Record<string, any>>({});
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
@@ -59,7 +68,21 @@ export function AddOnlyList<T extends Record<string, any>>({
   const subCols = columns.filter((c) => c !== columns[0] && c !== titleCol);
 
   function openCreate() {
+    setEditingId(null);
     setForm({});
+    setFormError(null);
+    setView("transaction");
+  }
+
+  function openEdit(row: T) {
+    if (!editable) return;
+    setEditingId(row.id);
+    const next: Record<string, any> = {};
+    for (const f of formFields) {
+      const v = row[f.key];
+      next[f.key] = f.type === "date" && v ? String(v).slice(0, 10) : v ?? "";
+    }
+    setForm(next);
     setFormError(null);
     setView("transaction");
   }
@@ -73,8 +96,13 @@ export function AddOnlyList<T extends Record<string, any>>({
         if (form[f.key] === "" || form[f.key] === undefined) continue;
         payload[f.key] = f.type === "number" ? Number(form[f.key]) : form[f.key];
       }
-      await api.post(basePath, payload);
+      if (editingId) {
+        await api.put(`${basePath}/${editingId}`, payload);
+      } else {
+        await api.post(basePath, payload);
+      }
       setView("list");
+      setEditingId(null);
       await load();
       onChanged?.();
     } catch (err) {
@@ -85,6 +113,7 @@ export function AddOnlyList<T extends Record<string, any>>({
   }
 
   if (view === "transaction") {
+    const preview = previewText?.(form);
     return (
       <div className="p-6">
         <button
@@ -95,8 +124,12 @@ export function AddOnlyList<T extends Record<string, any>>({
           Back to {title.toLowerCase()}
         </button>
 
-        <h2 className="text-lg font-semibold text-navy-900">New {singular}</h2>
-        <p className="mb-4 text-xs text-gray-500">This is a shared reference list - entries can't be edited once added.</p>
+        <h2 className="text-lg font-semibold text-navy-900">{editingId ? `Edit ${singular}` : `New ${singular}`}</h2>
+        <p className="mb-4 text-xs text-gray-500">
+          {editable
+            ? "This is a shared reference list, used across every screen that involves it - double-check before saving."
+            : "This is a shared reference list - entries can't be edited once added."}
+        </p>
 
         {formError && (
           <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{formError}</div>
@@ -135,6 +168,11 @@ export function AddOnlyList<T extends Record<string, any>>({
               </div>
             ))}
           </div>
+          {preview && (
+            <div className="mt-4 rounded-lg border border-brand-200 bg-brand-50 px-3 py-2 text-sm font-semibold text-brand-700">
+              {preview}
+            </div>
+          )}
         </div>
 
         <div className="mt-4 flex gap-2">
@@ -182,27 +220,28 @@ export function AddOnlyList<T extends Record<string, any>>({
           rows.map((row, i) => {
             const badgeSource = columns[0].render ? columns[0].render(row) : row[columns[0].key];
             return (
-            <div
-              key={row.id}
-              className={`flex items-center gap-3 px-4 py-3 transition-colors hover:bg-brand-50 ${i > 0 ? "border-t border-gray-100" : ""}`}
-            >
-              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-brand-200 to-brand-600 text-[11px] font-semibold text-navy-900">
-                {String(badgeSource ?? "?").slice(0, 3).toUpperCase()}
-              </div>
-              <div className="min-w-0 flex-1">
-                <div className="truncate text-sm font-medium text-navy-900">
-                  {titleCol.render ? titleCol.render(row) : String(row[titleCol.key] ?? "-")}
+              <div
+                key={row.id}
+                onClick={editable ? () => openEdit(row) : undefined}
+                className={`flex items-center gap-3 px-4 py-3 transition-colors hover:bg-brand-50 ${i > 0 ? "border-t border-gray-100" : ""} ${editable ? "cursor-pointer" : ""}`}
+              >
+                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-brand-200 to-brand-600 text-[11px] font-semibold text-navy-900">
+                  {String(badgeSource ?? "?").slice(0, 3).toUpperCase()}
                 </div>
-                {subCols.length > 0 && (
-                  <div className="truncate text-[11px] text-gray-500">
-                    {subCols
-                      .map((c) => (c.render ? c.render(row) : row[c.key]))
-                      .filter((v) => v !== undefined && v !== null && v !== "")
-                      .join(" · ")}
+                <div className="min-w-0 flex-1">
+                  <div className="truncate text-sm font-medium text-navy-900">
+                    {titleCol.render ? titleCol.render(row) : String(row[titleCol.key] ?? "-")}
                   </div>
-                )}
+                  {subCols.length > 0 && (
+                    <div className="truncate text-[11px] text-gray-500">
+                      {subCols
+                        .map((c) => (c.render ? c.render(row) : row[c.key]))
+                        .filter((v) => v !== undefined && v !== null && v !== "")
+                        .join(" · ")}
+                    </div>
+                  )}
+                </div>
               </div>
-            </div>
             );
           })
         )}

@@ -10,8 +10,9 @@ export default function UomConversions() {
   return (
     <AddOnlyList
       title="UOM Conversions"
-      description="How one unit converts to another, e.g. 1 CASE = 24 PC - optionally specific to one item."
+      description="Set up how a larger or purchase-style unit converts into a smaller one - e.g. 1 Carton = 12 Piece. Click Save with 'from' and 'to' picked and the factor filled in; leave Item blank to apply it to every item that uses those two units."
       basePath="/api/masters/uom-conversions"
+      editable
       columns={[
         { key: "fromUomId", label: "From", render: (row) => uomCodeById[row.fromUomId] ?? "?" },
         {
@@ -31,12 +32,24 @@ export default function UomConversions() {
         },
       ]}
       formFields={[
-        { key: "fromUomId", label: "From unit", type: "select", required: true, options: uomOptions },
-        { key: "toUomId", label: "To unit", type: "select", required: true, options: uomOptions },
-        { key: "factor", label: "Factor (1 From = ? To)", type: "number", required: true },
-        { key: "itemId", label: "Specific to one item (optional)", type: "select", options: itemOptions },
+        { key: "fromUomId", label: "Convert from this unit", type: "select", required: true, options: uomOptions },
+        { key: "toUomId", label: "...into this unit", type: "select", required: true, options: uomOptions },
+        {
+          key: "factor",
+          label: "How many 'into' units equal one 'from' unit?",
+          type: "number",
+          required: true,
+          placeholder: "e.g. 12, if 1 Carton = 12 Piece",
+        },
+        { key: "itemId", label: "Only for this item (optional - leave blank for every item)", type: "select", options: itemOptions },
         { key: "effectiveFrom", label: "Effective from", type: "date" },
       ]}
+      previewText={(form) => {
+        if (!form.fromUomId || !form.toUomId || !form.factor) return null;
+        const from = uomCodeById[form.fromUomId] ?? "?";
+        const to = uomCodeById[form.toUomId] ?? "?";
+        return `1 ${from} = ${form.factor} ${to}`;
+      }}
     />
   );
 }

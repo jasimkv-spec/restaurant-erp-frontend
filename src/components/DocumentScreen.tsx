@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { ArrowLeft, Check, Pencil, Plus, Trash2 } from "lucide-react";
+import { ArrowLeft, Check, FileSpreadsheet, FileText, Pencil, Plus, Printer, Trash2 } from "lucide-react";
 import { api, ApiError, type ListResponse } from "../lib/apiClient";
 import { FIELD_CLASS, LABEL_CLASS } from "./CrudTable";
 import { DocumentAttachments } from "./DocumentAttachments";
@@ -150,6 +150,15 @@ function resolveDisplayValue(f: DocFieldConfig, row: Record<string, any>): strin
 
 function sumNumericField(rows: Record<string, any>[], key: string): number {
   return rows.reduce((sum, r) => sum + (Number(r[key]) || 0), 0);
+}
+
+/** A listColumn's render() often returns a badge component (StatusBadge, PriorityBadge) rather than plain text - for CSV/PDF export that's not usable, so fall back to the row's raw scalar value in that case. */
+function exportText(col: { key: string; render?: (row: any) => any }, row: Record<string, any>): string {
+  const rendered = col.render ? col.render(row) : row[col.key];
+  if (typeof rendered === "string" || typeof rendered === "number") return String(rendered);
+  const raw = row[col.key];
+  if (raw === undefined || raw === null || typeof raw === "object") return "";
+  return String(raw);
 }
 
 export function DocumentScreen({
@@ -361,6 +370,107 @@ export function DocumentScreen({
     }
   }
 
+  function exportCsv() {
+    const headerLine = listColumns.map((c) => `"${c.label.replace(/"/g, '""')}"`).join(",");
+    const dataLines = rows.map((row) => listColumns.map((c) => `"${exportText(c, row).replace(/"/g, '""')}"`).join(","));
+    const csv = [headerLine, ...dataLines].join("\r\n");
+    const blob = new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${title.replace(/\s+/g, "-").toLowerCase()}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  }
+
+  function exportListPdf() {
+    const win = window.open("", "_blank");
+    if (!win) return;
+    const headerCells = listColumns
+      .map((c) => `<th style="padding:6px 10px;border:1px solid #ddd;background:#f3f4f6;text-align:left;">${c.label}</th>`)
+      .join("");
+    const bodyRows = rows
+      .map(
+        (row) =>
+          `<tr>${listColumns.map((c) => `<td style="padding:6px 10px;border:1px solid #ddd;">${exportText(c, row) || "-"}</td>`).join("")}</tr>`
+      )
+      .join("");
+    win.document.write(`
+      <html>
+        <head>
+          <title>${title}</title>
+          <style>body{font-family:Arial,Helvetica,sans-serif;padding:24px;} table{border-collapse:collapse;width:100%;font-size:12px;} h2{margin-bottom:4px;}</style>
+        </head>
+        <body>
+          <h2>${title}</h2>
+          <table><thead><tr>${headerCells}</tr></thead><tbody>${bodyRows}</tbody></table>
+        </body>
+      </html>
+    `);
+    win.document.close();
+    win.focus();
+    win.print();
+  }
+
+  function printDocument() {
+    if (!detail) return;
+    const win = window.open("", "_blank");
+    if (!win) return;
+    const headerRows = headerFields
+      .map(
+        (f) =>
+          `<tr><td style="padding:4px 10px;color:#666;">${f.label}</td><td style="padding:4px 10px;font-weight:600;">${
+            f.type === "select" ? resolveDisplayValue(f, detail) : String(detail[f.key] ?? "-")
+          }</td></tr>`
+      )
+      .join("");
+    const lineHeaderCells = ["#", ...lineFields.map((f) => f.label), ...(hasBaseQty ? ["In base unit"] : [])]
+      .map((h) => `<th style="padding:6px 10px;border:1px solid #ddd;background:#f3f4f6;text-align:left;">${h}</th>`)
+      .join("");
+    const lineBodyRows = (detail.lines ?? [])
+      .map((line: any, i: number) => {
+        const cells = [
+          String(i + 1),
+          ...lineFields.map((f) =>
+            f.type === "readonly" ? f.computed?.(line) ?? "-" : f.type === "select" ? resolveDisplayValue(f, line) : String(line[f.key] ?? "-")
+          ),
+          ...(hasBaseQty ? [line.baseQty != null ? `${line.baseQty} ${line.item?.baseUom?.code ?? ""}` : "-"] : []),
+        ];
+        return `<tr>${cells.map((c) => `<td style="padding:6px 10px;border:1px solid #ddd;">${c}</td>`).join("")}</tr>`;
+      })
+      .join("");
+    const totalsRow = hasNumericLine
+      ? `<tr>${["Total", ...lineFields.map((f) => (f.type === "number" ? String(sumNumericField(detail.lines ?? [], f.key)) : "")), ...(hasBaseQty ? [""] : [])]
+          .map((c) => `<td style="padding:6px 10px;border:1px solid #ddd;font-weight:700;">${c}</td>`)
+          .join("")}</tr>`
+      : "";
+    const metaBits = [
+      detail.title,
+      `Status: ${detail.status}`,
+      detail.requester ? `Created by ${detail.requester.displayName}` : null,
+      detail.approvedBy ? `Approved by ${detail.approvedBy.displayName}${detail.approvedAt ? ` on ${new Date(detail.approvedAt).toLocaleString()}` : ""}` : null,
+    ].filter(Boolean);
+    win.document.write(`
+      <html>
+        <head>
+          <title>${docNo}</title>
+          <style>body{font-family:Arial,Helvetica,sans-serif;padding:24px;color:#111;} table{border-collapse:collapse;width:100%;font-size:12px;margin-top:14px;} h1{margin-bottom:2px;} .meta{color:#666;font-size:12px;}</style>
+        </head>
+        <body>
+          <h1>${title} - ${docNo}</h1>
+          <div class="meta">${metaBits.join(" &middot; ")}</div>
+          <table>${headerRows}</table>
+          <table><thead><tr>${lineHeaderCells}</tr></thead><tbody>${lineBodyRows}${totalsRow}</tbody></table>
+        </body>
+      </html>
+    `);
+    win.document.close();
+    win.focus();
+    win.print();
+  }
+
   function renderFieldInput(f: DocFieldConfig, row: Record<string, any>, onChange: (value: any) => void, rowOptions?: { value: string; label: string }[]) {
     if (f.type === "readonly") {
       return <div className="px-1 py-2 text-sm text-gray-500">{f.computed?.(row) ?? "-"}</div>;
@@ -421,13 +531,33 @@ export function DocumentScreen({
               <h1 className="text-xl font-bold text-navy-900">{title}</h1>
               <p className="mt-1 text-sm text-gray-500">{description}</p>
             </div>
-            <button
-              onClick={openCreate}
-              className="flex shrink-0 items-center gap-1.5 rounded-lg bg-brand-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-brand-700"
-            >
-              <Plus size={16} />
-              New
-            </button>
+            <div className="flex shrink-0 items-center gap-2">
+              <button
+                onClick={exportCsv}
+                disabled={rows.length === 0}
+                title="Export Excel"
+                className="flex items-center gap-1.5 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-40"
+              >
+                <FileSpreadsheet size={15} />
+                Excel
+              </button>
+              <button
+                onClick={exportListPdf}
+                disabled={rows.length === 0}
+                title="Export PDF"
+                className="flex items-center gap-1.5 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-40"
+              >
+                <FileText size={15} />
+                PDF
+              </button>
+              <button
+                onClick={openCreate}
+                className="flex items-center gap-1.5 rounded-lg bg-brand-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-brand-700"
+              >
+                <Plus size={16} />
+                New
+              </button>
+            </div>
           </div>
 
           {error && (
@@ -500,8 +630,8 @@ export function DocumentScreen({
             <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div>
           )}
 
-          <div className="mb-5 rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
-            <div className="mb-3 border-b border-gray-100 pb-2 text-[11px] font-semibold uppercase tracking-wide text-brand-700">
+          <div className="mb-5 rounded-xl border border-brand-100 bg-brand-50 p-4 shadow-sm">
+            <div className="mb-3 border-b border-brand-200 pb-2 text-[11px] font-semibold uppercase tracking-wide text-brand-700">
               Document Details
             </div>
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -519,7 +649,7 @@ export function DocumentScreen({
 
           <div className="mb-5 rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
             <div className="mb-3 flex items-center justify-between border-b border-gray-100 pb-2">
-              <div className="text-[11px] font-semibold uppercase tracking-wide text-brand-700">Line Items</div>
+              <div className="text-[11px] font-semibold uppercase tracking-wide text-gray-600">Line Items</div>
               <button
                 onClick={addLine}
                 className="flex items-center gap-1 rounded-lg border border-brand-200 bg-brand-50 px-2.5 py-1 text-xs font-semibold text-brand-700 hover:bg-brand-100"
@@ -629,6 +759,13 @@ export function DocumentScreen({
                         {actionBusy === step.action ? "..." : step.label}
                       </button>
                     ))}
+                  <button
+                    onClick={printDocument}
+                    className="flex items-center gap-1.5 rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50"
+                  >
+                    <Printer size={14} />
+                    Print
+                  </button>
                   {editableStatuses.includes(detail.status) && (
                     <button
                       onClick={() => openEdit(detail)}
@@ -673,7 +810,7 @@ export function DocumentScreen({
                 </div>
               )}
 
-              <div className="mb-5 grid grid-cols-1 gap-4 rounded-xl border border-gray-200 bg-white p-4 shadow-sm sm:grid-cols-2 lg:grid-cols-3">
+              <div className="mb-5 grid grid-cols-1 gap-4 rounded-xl border border-brand-100 bg-brand-50 p-4 shadow-sm sm:grid-cols-2 lg:grid-cols-3">
                 {headerFields.map((f) => (
                   <div key={f.key} className={f.type === "textarea" ? "sm:col-span-2 lg:col-span-3" : ""}>
                     <div className={LABEL_CLASS}>{f.label}</div>
@@ -702,6 +839,12 @@ export function DocumentScreen({
                     <div>
                       <span className="font-semibold uppercase tracking-wide text-gray-500">Approved by </span>
                       <span className="text-navy-900">{detail.approvedBy.displayName}</span>
+                    </div>
+                  )}
+                  {detail.approvedAt && (
+                    <div>
+                      <span className="font-semibold uppercase tracking-wide text-gray-500">Approved on </span>
+                      <span className="text-navy-900">{new Date(detail.approvedAt).toLocaleString()}</span>
                     </div>
                   )}
                 </div>
