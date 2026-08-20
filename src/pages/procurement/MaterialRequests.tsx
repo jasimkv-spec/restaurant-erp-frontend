@@ -93,7 +93,7 @@ export default function MaterialRequests() {
         { key: "status", label: "Status" },
       ]}
       headerFields={[
-        { key: "companyId", label: "Company", type: "select", required: true, options: companyOptions },
+        { key: "companyId", label: "Company", type: "select", required: true, options: companyOptions, section: "Transaction Details" },
         {
           key: "branchId",
           label: "Branch",
@@ -101,9 +101,11 @@ export default function MaterialRequests() {
           required: true,
           options: branchOptions,
           disabled: !!singleBranch,
+          section: "Transaction Details",
         },
-        { key: "warehouseId", label: "Warehouse (optional)", type: "select", options: warehouseOptions },
-        { key: "title", label: "MR title", type: "text", required: true, placeholder: "Shown on every RFQ/PO/GRN raised from this MR" },
+        { key: "warehouseId", label: "Warehouse (optional)", type: "select", options: warehouseOptions, section: "Transaction Details" },
+        { key: "requestDate", label: "Transaction date", type: "date", required: true, section: "Transaction Details" },
+        { key: "title", label: "MR title", type: "text", required: true, placeholder: "Shown on every RFQ/PO/GRN raised from this MR", section: "Request Details" },
         {
           key: "requestType",
           label: "Request type",
@@ -112,23 +114,25 @@ export default function MaterialRequests() {
             { value: "Material", label: "Material Request" },
             { value: "Service", label: "Service Request" },
           ],
+          section: "Request Details",
         },
-        { key: "priority", label: "Priority", type: "select", options: PRIORITIES.map((p) => ({ value: p, label: p })) },
+        { key: "priority", label: "Priority", type: "select", options: PRIORITIES.map((p) => ({ value: p, label: p })), section: "Request Details" },
         {
           key: "sourceType",
           label: "Source type (optional)",
           type: "select",
           options: SOURCE_TYPES.map((s) => ({ value: s, label: s })),
+          section: "Request Details",
         },
-        { key: "requestDate", label: "Transaction date", type: "date", required: true },
-        { key: "requiredDate", label: "Requested by date (optional)", type: "date" },
+        { key: "requiredDate", label: "Requested by date (optional)", type: "date", section: "Schedule & Validity" },
         {
           key: "validityDate",
           label: "Valid until (optional)",
           type: "date",
           placeholder: "After this date it drops out of Consolidation/RFQ/PO",
+          section: "Schedule & Validity",
         },
-        { key: "notes", label: "Narration", type: "textarea", placeholder: "Optional notes for whoever reviews or actions this MR" },
+        { key: "notes", label: "Narration", type: "textarea", placeholder: "Optional notes for whoever reviews or actions this MR", section: "Notes" },
       ]}
       lineFields={[
         { key: "itemId", label: "Item", type: "select", required: true, options: itemOptions },

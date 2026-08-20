@@ -37,6 +37,8 @@ export interface DocFieldConfig {
   placeholder?: string;
   /** Greys the field out and blocks input - e.g. a branch that's auto-selected because the user only has access to one. */
   disabled?: boolean;
+  /** Groups this headerField into its own titled, color-coded panel alongside other fields sharing the same section name (e.g. "Transaction Details", "Party Details") - mirrors the multi-panel header layout of a standard ERP transaction screen. Fields without a section fall into a single default "Document Details" panel, so existing screens render unchanged until they opt in. Ignored on lineFields. */
+  section?: string;
 }
 
 export interface LifecycleStep {
@@ -146,6 +148,29 @@ function resolveDisplayValue(f: DocFieldConfig, row: Record<string, any>): strin
     if (relation.name) return relation.name;
   }
   return f.options?.find((o) => o.value === row[f.key])?.label ?? row[f.key] ?? "-";
+}
+
+/** Cycled by section index so a 4-panel header (Transaction/Party/Reference/Payment, say) reads as visually distinct blocks rather than one undifferentiated field grid - same idea as a standard ERP transaction screen's colored header strips. */
+const SECTION_PALETTE = [
+  { border: "border-brand-100", bg: "bg-brand-50", title: "text-brand-700", divider: "border-brand-200" },
+  { border: "border-sky-100", bg: "bg-sky-50", title: "text-sky-700", divider: "border-sky-200" },
+  { border: "border-amber-100", bg: "bg-amber-50", title: "text-amber-700", divider: "border-amber-200" },
+  { border: "border-violet-100", bg: "bg-violet-50", title: "text-violet-700", divider: "border-violet-200" },
+];
+
+/** Groups headerFields by their (optional) `section`, preserving first-seen order. Fields with no section land together in one "Document Details" panel, so screens that never set `section` keep rendering exactly one panel like before. */
+function groupBySection(fields: DocFieldConfig[]): { section: string; fields: DocFieldConfig[] }[] {
+  const groups: { section: string; fields: DocFieldConfig[] }[] = [];
+  for (const f of fields) {
+    const section = f.section ?? "Document Details";
+    let group = groups.find((g) => g.section === section);
+    if (!group) {
+      group = { section, fields: [] };
+      groups.push(group);
+    }
+    group.fields.push(f);
+  }
+  return groups;
 }
 
 function sumNumericField(rows: Record<string, any>[], key: string): number {
@@ -414,61 +439,99 @@ export function DocumentScreen({
     win.print();
   }
 
-  function printDocument() {
-    if (!detail) return;
+  // Hex approximations of SECTION_PALETTE, since the print window is a
+  // standalone document (no Tailwind stylesheet available in it) - keeps the
+  // printed header visually matching the on-screen sectioned panels.
+  const PRINT_SECTION_COLORS = ["#eff6ff", "#f0f9ff", "#fffbeb", "#f5f3ff"];
+  const PRINT_SECTION_BORDERS = ["#bfdbfe", "#bae6fd", "#fde68a", "#ddd6fe"];
+
+  function printRecord(record: any) {
     const win = window.open("", "_blank");
     if (!win) return;
-    const headerRows = headerFields
-      .map(
-        (f) =>
-          `<tr><td style="padding:4px 10px;color:#666;">${f.label}</td><td style="padding:4px 10px;font-weight:600;">${
-            f.type === "select" ? resolveDisplayValue(f, detail) : String(detail[f.key] ?? "-")
-          }</td></tr>`
-      )
+    // Derived from this specific record rather than the outer hasBaseQty/hasNumericLine
+    // consts, which are based on `detail` - null while printing straight from the list
+    // row (printRow), so relying on them there would silently drop the base-unit column.
+    const recHasBaseQty = (record.lines ?? []).some((l: any) => l.baseQty != null);
+    const recHasNumericLine = lineFields.some((f) => f.type === "number");
+    const recDocNo = record.mrNo ?? record.poNo ?? record.grnNo ?? record.transferNo ?? record.adjustmentNo ?? record.id;
+    const sections = groupBySection(headerFields);
+    const sectionPanels = sections
+      .map((group, i) => {
+        const rows = group.fields
+          .map(
+            (f) =>
+              `<tr><td style="padding:3px 0;color:#666;">${f.label}</td><td style="padding:3px 0 3px 8px;font-weight:600;text-align:right;">${
+                f.type === "select" ? resolveDisplayValue(f, record) : String(record[f.key] ?? "-")
+              }</td></tr>`
+          )
+          .join("");
+        const bg = PRINT_SECTION_COLORS[i % PRINT_SECTION_COLORS.length];
+        const bd = PRINT_SECTION_BORDERS[i % PRINT_SECTION_BORDERS.length];
+        return `<td style="vertical-align:top;padding:0 6px 0 0;">
+          <div style="border:1px solid ${bd};border-radius:6px;overflow:hidden;">
+            <div style="background:${bg};border-bottom:1px solid ${bd};padding:6px 10px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.03em;">${group.section}</div>
+            <table style="width:100%;font-size:12px;padding:8px 10px;box-sizing:border-box;"><tbody>${rows}</tbody></table>
+          </div>
+        </td>`;
+      })
       .join("");
-    const lineHeaderCells = ["#", ...lineFields.map((f) => f.label), ...(hasBaseQty ? ["In base unit"] : [])]
+    const lineHeaderCells = ["#", ...lineFields.map((f) => f.label), ...(recHasBaseQty ? ["In base unit"] : [])]
       .map((h) => `<th style="padding:6px 10px;border:1px solid #ddd;background:#f3f4f6;text-align:left;">${h}</th>`)
       .join("");
-    const lineBodyRows = (detail.lines ?? [])
+    const lineBodyRows = (record.lines ?? [])
       .map((line: any, i: number) => {
         const cells = [
           String(i + 1),
           ...lineFields.map((f) =>
             f.type === "readonly" ? f.computed?.(line) ?? "-" : f.type === "select" ? resolveDisplayValue(f, line) : String(line[f.key] ?? "-")
           ),
-          ...(hasBaseQty ? [line.baseQty != null ? `${line.baseQty} ${line.item?.baseUom?.code ?? ""}` : "-"] : []),
+          ...(recHasBaseQty ? [line.baseQty != null ? `${line.baseQty} ${line.item?.baseUom?.code ?? ""}` : "-"] : []),
         ];
-        return `<tr>${cells.map((c) => `<td style="padding:6px 10px;border:1px solid #ddd;">${c}</td>`).join("")}</tr>`;
+        return `<tr${i % 2 === 1 ? ' style="background:#fafafa;"' : ""}>${cells.map((c) => `<td style="padding:6px 10px;border:1px solid #ddd;">${c}</td>`).join("")}</tr>`;
       })
       .join("");
-    const totalsRow = hasNumericLine
-      ? `<tr>${["Total", ...lineFields.map((f) => (f.type === "number" ? String(sumNumericField(detail.lines ?? [], f.key)) : "")), ...(hasBaseQty ? [""] : [])]
+    const totalsRow = recHasNumericLine
+      ? `<tr>${["Total", ...lineFields.map((f) => (f.type === "number" ? String(sumNumericField(record.lines ?? [], f.key)) : "")), ...(recHasBaseQty ? [""] : [])]
           .map((c) => `<td style="padding:6px 10px;border:1px solid #ddd;font-weight:700;">${c}</td>`)
           .join("")}</tr>`
       : "";
     const metaBits = [
-      detail.title,
-      `Status: ${detail.status}`,
-      detail.requester ? `Created by ${detail.requester.displayName}` : null,
-      detail.approvedBy ? `Approved by ${detail.approvedBy.displayName}${detail.approvedAt ? ` on ${new Date(detail.approvedAt).toLocaleString()}` : ""}` : null,
+      record.title,
+      `Status: ${record.status}`,
+      record.requester ? `Created by ${record.requester.displayName}` : null,
+      record.approvedBy ? `Approved by ${record.approvedBy.displayName}${record.approvedAt ? ` on ${new Date(record.approvedAt).toLocaleString()}` : ""}` : null,
     ].filter(Boolean);
     win.document.write(`
       <html>
         <head>
-          <title>${docNo}</title>
-          <style>body{font-family:Arial,Helvetica,sans-serif;padding:24px;color:#111;} table{border-collapse:collapse;width:100%;font-size:12px;margin-top:14px;} h1{margin-bottom:2px;} .meta{color:#666;font-size:12px;}</style>
+          <title>${recDocNo}</title>
+          <style>body{font-family:Arial,Helvetica,sans-serif;padding:24px;color:#111;} table{border-collapse:collapse;} h1{margin-bottom:2px;} .meta{color:#666;font-size:12px;margin-bottom:14px;} .lines{width:100%;font-size:12px;margin-top:18px;}</style>
         </head>
         <body>
-          <h1>${title} - ${docNo}</h1>
+          <h1>${title} - ${recDocNo}</h1>
           <div class="meta">${metaBits.join(" &middot; ")}</div>
-          <table>${headerRows}</table>
-          <table><thead><tr>${lineHeaderCells}</tr></thead><tbody>${lineBodyRows}${totalsRow}</tbody></table>
+          <table style="width:100%;"><tbody><tr>${sectionPanels}</tr></tbody></table>
+          <table class="lines"><thead><tr>${lineHeaderCells}</tr></thead><tbody>${lineBodyRows}${totalsRow}</tbody></table>
         </body>
       </html>
     `);
     win.document.close();
     win.focus();
     win.print();
+  }
+
+  function printDocument() {
+    if (detail) printRecord(detail);
+  }
+
+  async function printRow(id: string, e: { stopPropagation: () => void }) {
+    e.stopPropagation();
+    try {
+      const record = await api.get<any>(`${basePath}/${id}`);
+      printRecord(record);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Could not load this record to print");
+    }
   }
 
   function renderFieldInput(f: DocFieldConfig, row: Record<string, any>, onChange: (value: any) => void, rowOptions?: { value: string; label: string }[]) {
@@ -521,6 +584,7 @@ export function DocumentScreen({
   const hasBaseQty = (detail?.lines ?? []).some((l: any) => l.baseQty != null);
   const hasNumericLine = lineFields.some((f) => f.type === "number");
   const docNo = detail && (detail.mrNo ?? detail.poNo ?? detail.grnNo ?? detail.transferNo ?? detail.adjustmentNo ?? detail.id);
+  const headerSections = groupBySection(headerFields);
 
   return (
     <div className="mx-auto max-w-6xl">
@@ -573,18 +637,19 @@ export function DocumentScreen({
                       {c.label}
                     </th>
                   ))}
+                  <th className="px-4 py-2.5 text-right text-xs font-semibold uppercase tracking-wide text-gray-600">Print</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
                 {loading ? (
                   <tr>
-                    <td colSpan={listColumns.length} className="px-4 py-6 text-center text-gray-400">
+                    <td colSpan={listColumns.length + 1} className="px-4 py-6 text-center text-gray-400">
                       Loading...
                     </td>
                   </tr>
                 ) : rows.length === 0 ? (
                   <tr>
-                    <td colSpan={listColumns.length} className="px-4 py-6 text-center text-gray-400">
+                    <td colSpan={listColumns.length + 1} className="px-4 py-6 text-center text-gray-400">
                       No records yet.
                     </td>
                   </tr>
@@ -600,6 +665,15 @@ export function DocumentScreen({
                           {c.render ? c.render(row) : c.key === "status" ? <StatusBadge status={row.status} /> : String(row[c.key] ?? "-")}
                         </td>
                       ))}
+                      <td className="px-4 py-2.5 text-right">
+                        <button
+                          onClick={(e) => printRow(row.id, e)}
+                          title="Print"
+                          className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-100 hover:text-navy-900"
+                        >
+                          <Printer size={15} />
+                        </button>
+                      </td>
                     </tr>
                   ))
                 )}
@@ -630,21 +704,28 @@ export function DocumentScreen({
             <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div>
           )}
 
-          <div className="mb-5 rounded-xl border border-brand-100 bg-brand-50 p-4 shadow-sm">
-            <div className="mb-3 border-b border-brand-200 pb-2 text-[11px] font-semibold uppercase tracking-wide text-brand-700">
-              Document Details
-            </div>
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              {headerFields.map((f) => (
-                <div key={f.key} className={f.type === "textarea" ? "sm:col-span-2 lg:col-span-3" : ""}>
-                  <label className={LABEL_CLASS}>
-                    {f.label}
-                    {f.required && <span className="text-red-500"> *</span>}
-                  </label>
-                  {renderFieldInput(f, header, (value) => setHeader((prev) => ({ ...prev, [f.key]: value })))}
+          <div className="mb-5 grid grid-cols-1 items-start gap-4 sm:grid-cols-2 xl:grid-cols-4">
+            {headerSections.map((group, i) => {
+              const palette = SECTION_PALETTE[i % SECTION_PALETTE.length];
+              return (
+                <div key={group.section} className={`rounded-xl border ${palette.border} ${palette.bg} p-4 shadow-sm`}>
+                  <div className={`mb-3 border-b ${palette.divider} pb-2 text-[11px] font-semibold uppercase tracking-wide ${palette.title}`}>
+                    {group.section}
+                  </div>
+                  <div className="space-y-3">
+                    {group.fields.map((f) => (
+                      <div key={f.key}>
+                        <label className={LABEL_CLASS}>
+                          {f.label}
+                          {f.required && <span className="text-red-500"> *</span>}
+                        </label>
+                        {renderFieldInput(f, header, (value) => setHeader((prev) => ({ ...prev, [f.key]: value })))}
+                      </div>
+                    ))}
+                  </div>
                 </div>
-              ))}
-            </div>
+              );
+            })}
           </div>
 
           <div className="mb-5 rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
@@ -810,15 +891,27 @@ export function DocumentScreen({
                 </div>
               )}
 
-              <div className="mb-5 grid grid-cols-1 gap-4 rounded-xl border border-brand-100 bg-brand-50 p-4 shadow-sm sm:grid-cols-2 lg:grid-cols-3">
-                {headerFields.map((f) => (
-                  <div key={f.key} className={f.type === "textarea" ? "sm:col-span-2 lg:col-span-3" : ""}>
-                    <div className={LABEL_CLASS}>{f.label}</div>
-                    <div className="whitespace-pre-wrap text-sm text-navy-900">
-                      {f.type === "select" ? resolveDisplayValue(f, detail) : String(detail[f.key] ?? "-")}
+              <div className="mb-5 grid grid-cols-1 items-start gap-4 sm:grid-cols-2 xl:grid-cols-4">
+                {headerSections.map((group, i) => {
+                  const palette = SECTION_PALETTE[i % SECTION_PALETTE.length];
+                  return (
+                    <div key={group.section} className={`rounded-xl border ${palette.border} ${palette.bg} p-4 shadow-sm`}>
+                      <div className={`mb-3 border-b ${palette.divider} pb-2 text-[11px] font-semibold uppercase tracking-wide ${palette.title}`}>
+                        {group.section}
+                      </div>
+                      <div className="space-y-3">
+                        {group.fields.map((f) => (
+                          <div key={f.key}>
+                            <div className={LABEL_CLASS}>{f.label}</div>
+                            <div className="whitespace-pre-wrap text-sm text-navy-900">
+                              {f.type === "select" ? resolveDisplayValue(f, detail) : String(detail[f.key] ?? "-")}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
 
               {(detail.requester || detail.approvedBy || detail.createdAt) && (

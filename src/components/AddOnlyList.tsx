@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { ArrowLeft, Plus } from "lucide-react";
+import { ArrowLeft, Plus, Trash2 } from "lucide-react";
 import { api, ApiError, type ListResponse } from "../lib/apiClient";
 import { FIELD_CLASS, LABEL_CLASS, type CrudColumn, type CrudFormField } from "./CrudTable";
 
@@ -43,6 +43,8 @@ export function AddOnlyList<T extends Record<string, any>>({
   const [form, setForm] = useState<Record<string, any>>({});
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   async function load() {
     setLoading(true);
@@ -85,6 +87,22 @@ export function AddOnlyList<T extends Record<string, any>>({
     setForm(next);
     setFormError(null);
     setView("transaction");
+  }
+
+  async function handleDeleteRow(row: T, e: { stopPropagation: () => void }) {
+    e.stopPropagation();
+    if (!window.confirm("Delete this entry permanently? This can't be undone.")) return;
+    setDeletingId(row.id);
+    setDeleteError(null);
+    try {
+      await api.del(`${basePath}/${row.id}`);
+      await load();
+      onChanged?.();
+    } catch (err) {
+      setDeleteError(err instanceof ApiError ? err.message : "Could not delete this entry");
+    } finally {
+      setDeletingId(null);
+    }
   }
 
   async function handleSave() {
@@ -210,6 +228,9 @@ export function AddOnlyList<T extends Record<string, any>>({
       {error && (
         <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div>
       )}
+      {deleteError && (
+        <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{deleteError}</div>
+      )}
 
       <div className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
         {loading ? (
@@ -241,6 +262,16 @@ export function AddOnlyList<T extends Record<string, any>>({
                     </div>
                   )}
                 </div>
+                {editable && (
+                  <button
+                    onClick={(e) => handleDeleteRow(row, e)}
+                    disabled={deletingId === row.id}
+                    title="Delete"
+                    className="shrink-0 rounded-lg p-1.5 text-gray-400 hover:bg-red-50 hover:text-red-600 disabled:opacity-40"
+                  >
+                    <Trash2 size={15} />
+                  </button>
+                )}
               </div>
             );
           })
