@@ -154,7 +154,10 @@ export function CrudTable<T extends Record<string, any>>({
 
   function exportText(col: CrudColumn<T>, row: T): string {
     const val = col.render ? col.render(row) : row[col.key];
-    if (val === undefined || val === null || val === "") return "";
+    // A custom render() can return JSX (e.g. a logo <img>) - there's nothing
+    // meaningful to put in a CSV/PDF cell for that, so leave it blank rather
+    // than stringifying the React element into "[object Object]".
+    if (val === undefined || val === null || val === "" || (typeof val === "object" && val !== null)) return "";
     return String(val);
   }
 
@@ -586,6 +589,11 @@ export function CrudTable<T extends Record<string, any>>({
                       >
                         {c === statusCol
                           ? statusPill(String(value ?? ""))
+                          : typeof value === "object" && value !== null
+                          ? // A custom render() returned JSX (e.g. a logo <img>) rather
+                            // than a primitive - render it directly. Stringifying a
+                            // React element here previously printed "[object Object]".
+                            value
                           : value === undefined || value === null || value === ""
                           ? "-"
                           : String(value)}
