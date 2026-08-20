@@ -26,6 +26,8 @@ export interface AuthedUser {
   branches?: { id: string; code: string; name: string; companyId: string; defaultWarehouseId: string | null }[];
   /** Every company touched by the branches above - the choices offered on the post-login company-scope screen. */
   companies?: { id: string; code: string; name: string }[];
+  /** Users screen's "Allow All companies (Global) login" toggle - false hides the Global option on ChooseCompany.tsx, forcing this user to always pick one company. Undefined (older cached session) defaults to allowed. */
+  allowGlobalLogin?: boolean;
 }
 
 /** True if the logged-in user's role(s) grant this exact permission string (e.g. "Inventory.StockBalance.View"). Absent/undefined permissions (older cached session, not yet re-logged-in) fails closed. */

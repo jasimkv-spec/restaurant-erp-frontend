@@ -12,7 +12,7 @@ export interface CrudColumn<T> {
 export interface CrudFormField {
   key: string;
   label: string;
-  type: "text" | "number" | "select" | "checkbox" | "date" | "textarea" | "file";
+  type: "text" | "number" | "select" | "checkbox" | "date" | "textarea" | "file" | "password";
   required?: boolean;
   options?: { value: string; label: string }[];
   placeholder?: string;

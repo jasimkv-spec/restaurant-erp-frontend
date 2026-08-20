@@ -17,6 +17,10 @@ export default function ChooseCompany() {
   const { user, setActiveCompanyScope } = useAuth();
   const navigate = useNavigate();
   const companies = user?.companies ?? [];
+  // Users screen's "Allow All companies (Global) login" toggle - undefined
+  // (older cached session, predates this field) defaults to allowed so
+  // nobody's existing access silently narrows on next login.
+  const canGoGlobal = user?.allowGlobalLogin !== false;
 
   function choose(scope: string) {
     setActiveCompanyScope(scope);
@@ -53,18 +57,20 @@ export default function ChooseCompany() {
               </button>
             ))}
 
-            <button
-              onClick={() => choose("GLOBAL")}
-              className="flex w-full items-center gap-3 rounded-xl border border-dashed border-gray-300 bg-white px-4 py-3 text-left transition-colors hover:border-brand-300 hover:bg-brand-50"
-            >
-              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-navy-100 text-navy-700">
-                <Globe2 size={16} />
-              </div>
-              <div className="min-w-0">
-                <div className="truncate text-sm font-semibold text-navy-900">All companies (Global)</div>
-                <div className="text-xs text-gray-500">Pick a company on each transaction as you go</div>
-              </div>
-            </button>
+            {canGoGlobal && (
+              <button
+                onClick={() => choose("GLOBAL")}
+                className="flex w-full items-center gap-3 rounded-xl border border-dashed border-gray-300 bg-white px-4 py-3 text-left transition-colors hover:border-brand-300 hover:bg-brand-50"
+              >
+                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-navy-100 text-navy-700">
+                  <Globe2 size={16} />
+                </div>
+                <div className="min-w-0">
+                  <div className="truncate text-sm font-semibold text-navy-900">All companies (Global)</div>
+                  <div className="text-xs text-gray-500">Pick a company on each transaction as you go</div>
+                </div>
+              </button>
+            )}
           </div>
         </div>
       </div>

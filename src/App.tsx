@@ -37,6 +37,8 @@ import ProductSubgroups from "./pages/products/ProductSubgroups";
 import ProductFamilies from "./pages/products/ProductFamilies";
 import Brands from "./pages/products/Brands";
 import PriceGroups from "./pages/products/PriceGroups";
+import Users from "./pages/security/Users";
+import Roles from "./pages/security/Roles";
 
 function ChooseCompanyGate() {
   const { isAuthenticated } = useAuth();
@@ -102,6 +104,9 @@ export default function App() {
           <Route path="/products/product-families" element={<RequireAuth><ProductFamilies /></RequireAuth>} />
           <Route path="/products/brands" element={<RequireAuth><Brands /></RequireAuth>} />
           <Route path="/products/price-groups" element={<RequireAuth><PriceGroups /></RequireAuth>} />
+
+          <Route path="/security/users" element={<RequireAuth><Users /></RequireAuth>} />
+          <Route path="/security/roles" element={<RequireAuth><Roles /></RequireAuth>} />
 
           <Route path="/" element={<Navigate to="/setup/companies" replace />} />
           <Route path="*" element={<Navigate to="/setup/companies" replace />} />

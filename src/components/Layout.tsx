@@ -140,7 +140,15 @@ const NAV: NavGroup[] = [
     items: [{ label: "Document types", path: "/workflow/document-types", icon: FileText }],
   },
   { key: "reports", label: "Reports", icon: BarChart3, items: [], comingSoon: true },
-  { key: "admin", label: "Security and admin", icon: ShieldCheck, items: [], comingSoon: true },
+  {
+    key: "admin",
+    label: "Security and admin",
+    icon: ShieldCheck,
+    items: [
+      { label: "Users", path: "/security/users", icon: Users },
+      { label: "Roles", path: "/security/roles", icon: ShieldCheck },
+    ],
+  },
 ];
 
 function initials(name: string) {
