@@ -179,13 +179,15 @@ export function AddOnlyList<T extends Record<string, any>>({
         ) : rows.length === 0 ? (
           <div className="px-4 py-6 text-center text-sm text-gray-400">Nothing here yet.</div>
         ) : (
-          rows.map((row, i) => (
+          rows.map((row, i) => {
+            const badgeSource = columns[0].render ? columns[0].render(row) : row[columns[0].key];
+            return (
             <div
               key={row.id}
               className={`flex items-center gap-3 px-4 py-3 transition-colors hover:bg-brand-50 ${i > 0 ? "border-t border-gray-100" : ""}`}
             >
               <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-brand-200 to-brand-600 text-[11px] font-semibold text-navy-900">
-                {String(row[columns[0].key] ?? "?").slice(0, 3).toUpperCase()}
+                {String(badgeSource ?? "?").slice(0, 3).toUpperCase()}
               </div>
               <div className="min-w-0 flex-1">
                 <div className="truncate text-sm font-medium text-navy-900">
@@ -201,7 +203,8 @@ export function AddOnlyList<T extends Record<string, any>>({
                 )}
               </div>
             </div>
-          ))
+            );
+          })
         )}
       </div>
     </div>
