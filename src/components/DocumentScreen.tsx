@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 import { ArrowLeft, Check, FileSpreadsheet, FileText, Pencil, Plus, Printer, Trash2 } from "lucide-react";
 import { api, ApiError, type ListResponse } from "../lib/apiClient";
 import { FIELD_CLASS, LABEL_CLASS } from "./CrudTable";
@@ -39,6 +39,8 @@ export interface DocFieldConfig {
   disabled?: boolean;
   /** Groups this headerField into its own titled, color-coded panel alongside other fields sharing the same section name (e.g. "Transaction Details", "Party Details") - mirrors the multi-panel header layout of a standard ERP transaction screen. Fields without a section fall into a single default "Document Details" panel, so existing screens render unchanged until they opt in. Ignored on lineFields. */
   section?: string;
+  /** Caps this lineField's input width instead of letting it stretch to fill its table cell - a Qty or a short code column looks wrong spanning the same width as an Item picker. Ignored on headerFields (those already size themselves via the panel grid). */
+  compact?: boolean;
 }
 
 export interface LifecycleStep {
@@ -199,8 +201,10 @@ export function DocumentScreen({
   editableStatuses = ["Draft"],
   deletableStatuses = ["Draft"],
   onLineFieldChange,
+  onHeaderFieldChange,
   attachmentsModuleCode,
   statusFlow,
+  lineWarnings,
 }: {
   title: string;
   description: string;
@@ -215,12 +219,16 @@ export function DocumentScreen({
   editableStatuses?: string[];
   /** Statuses that still allow deleting the document outright. Default: Draft only. */
   deletableStatuses?: string[];
-  /** Fires after any line field changes, with the row's latest values - lets the caller react (e.g. fetch that item's packing-unit options when itemId changes). */
-  onLineFieldChange?: (index: number, key: string, value: any, row: Record<string, any>) => void;
+  /** Fires after any line field changes, with the row's latest values - lets the caller react (e.g. fetch that item's packing-unit options when itemId changes). editingId is the id of the document currently being edited (null when creating new) - useful for a duplicate/lookup check the caller wants to exclude this same document from. */
+  onLineFieldChange?: (index: number, key: string, value: any, row: Record<string, any>, editingId: string | null) => void;
+  /** Fires after any header field changes, with the header's latest values - lets the caller track things like "which branch is currently selected" for use inside onLineFieldChange (e.g. an available-stock lookup needs both the line's itemId and the header's branchId, but the two live in separate state owned by this component). */
+  onHeaderFieldChange?: (key: string, value: any, header: Record<string, any>) => void;
   /** Passed straight to DocumentAttachments as moduleCode - opts this document into the same upload/download/delete panel Vendors/Customers use. Omit to leave attachments off for a screen that doesn't need them. */
   attachmentsModuleCode?: string;
   /** Ordered list of statuses that make up the normal happy-path (e.g. ["Draft","Submitted","Approved"]) - renders as a progress stepper in the detail view. Side-branch statuses like Rejected/Cancelled just fall back to the plain badge. */
   statusFlow?: string[];
+  /** Caller-owned map of line index -> warning message (e.g. "Item already has an open MR for this branch"), rendered as an inline banner row directly under that line in the form view. The caller decides when to populate/clear it, typically from onLineFieldChange - kept generic here so any future document screen can reuse the same duplicate-check/stock-check UX. */
+  lineWarnings?: Record<number, string>;
 }) {
   const [view, setView] = useState<"list" | "form" | "detail">("list");
   const [rows, setRows] = useState<any[]>([]);
@@ -273,6 +281,12 @@ export function DocumentScreen({
     const nextHeader: Record<string, any> = {};
     for (const f of headerFields) nextHeader[f.key] = fieldInputValue(record, f);
     setHeader(nextHeader);
+    // Seed the caller's own shadow copy of the header too (see
+    // onHeaderFieldChange) - otherwise a line-level lookup like available
+    // stock keeps using whatever branch was last active on screen instead
+    // of the branch this record actually belongs to, until the user
+    // happens to re-touch the Branch field themselves.
+    for (const f of headerFields) onHeaderFieldChange?.(f.key, nextHeader[f.key], nextHeader);
     const recordLines = (record.lines ?? []).length ? record.lines : [emptyLine];
     setLines(
       recordLines.map((line: any) => {
@@ -308,7 +322,15 @@ export function DocumentScreen({
   function setLineValue(index: number, key: string, value: any) {
     setLines((prev) => {
       const next = prev.map((l, i) => (i === index ? { ...l, [key]: value } : l));
-      onLineFieldChange?.(index, key, value, next[index]);
+      onLineFieldChange?.(index, key, value, next[index], editingId);
+      return next;
+    });
+  }
+
+  function setHeaderValue(key: string, value: any) {
+    setHeader((prev) => {
+      const next = { ...prev, [key]: value };
+      onHeaderFieldChange?.(key, value, next);
       return next;
     });
   }
@@ -539,11 +561,12 @@ export function DocumentScreen({
       return <div className="px-1 py-2 text-sm text-gray-500">{f.computed?.(row) ?? "-"}</div>;
     }
     const disabledCls = f.disabled ? "bg-gray-100 text-gray-500" : "";
+    const compactCls = f.compact ? "max-w-[110px]" : "";
     if (f.type === "select") {
       const opts = rowOptions ?? f.options ?? [];
       return (
         <select
-          className={`${FIELD_CLASS} ${disabledCls}`}
+          className={`${FIELD_CLASS} ${disabledCls} ${compactCls}`}
           value={row[f.key] ?? ""}
           disabled={f.disabled}
           onChange={(e) => onChange(e.target.value)}
@@ -572,7 +595,7 @@ export function DocumentScreen({
     return (
       <input
         type={f.type === "date" ? "date" : f.type === "number" ? "number" : "text"}
-        className={`${FIELD_CLASS} ${disabledCls}`}
+        className={`${FIELD_CLASS} ${disabledCls} ${compactCls}`}
         placeholder={f.placeholder}
         value={row[f.key] ?? ""}
         disabled={f.disabled}
@@ -719,7 +742,7 @@ export function DocumentScreen({
                           {f.label}
                           {f.required && <span className="text-red-500"> *</span>}
                         </label>
-                        {renderFieldInput(f, header, (value) => setHeader((prev) => ({ ...prev, [f.key]: value })))}
+                        {renderFieldInput(f, header, (value) => setHeaderValue(f.key, value))}
                       </div>
                     ))}
                   </div>
@@ -740,50 +763,59 @@ export function DocumentScreen({
               </button>
             </div>
 
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
+            <div className="overflow-x-auto rounded-lg border border-gray-200">
+              <table className="w-full border-collapse text-sm">
                 <thead>
-                  <tr>
-                    <th className="w-8 px-2 pb-2 text-left text-[11px] font-semibold uppercase tracking-wide text-gray-500">#</th>
+                  <tr className="bg-gray-50">
+                    <th className="w-8 border-b border-gray-200 px-2 py-2 text-left text-[11px] font-semibold uppercase tracking-wide text-gray-500">#</th>
                     {lineFields.map((f) => (
-                      <th key={f.key} className="px-2 pb-2 text-left text-[11px] font-semibold uppercase tracking-wide text-gray-500">
+                      <th key={f.key} className="border-b border-l border-gray-200 px-2 py-2 text-left text-[11px] font-semibold uppercase tracking-wide text-gray-500">
                         {f.label}
                       </th>
                     ))}
-                    <th></th>
+                    <th className="border-b border-l border-gray-200"></th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-gray-100">
+                <tbody>
                   {lines.map((line, i) => (
-                    <tr key={i}>
-                      <td className="px-2 py-1.5 text-xs text-gray-400">{i + 1}</td>
-                      {lineFields.map((f) => (
-                        <td key={f.key} className="px-2 py-1.5">
-                          {renderFieldInput(f, line, (value) => setLineValue(i, f.key, value), f.optionsForRow?.(line))}
+                    <Fragment key={i}>
+                      <tr className={i % 2 === 1 ? "bg-gray-50/50" : ""}>
+                        <td className="border-b border-gray-100 px-2 py-1.5 text-xs text-gray-400">{i + 1}</td>
+                        {lineFields.map((f) => (
+                          <td key={f.key} className="border-b border-l border-gray-100 px-2 py-1.5">
+                            {renderFieldInput(f, line, (value) => setLineValue(i, f.key, value), f.optionsForRow?.(line))}
+                          </td>
+                        ))}
+                        <td className="border-b border-l border-gray-100 px-2 py-1.5">
+                          <button
+                            onClick={() => removeLine(i)}
+                            disabled={lines.length === 1}
+                            className="rounded-lg p-1.5 text-gray-400 hover:bg-red-50 hover:text-red-600 disabled:opacity-30"
+                          >
+                            <Trash2 size={15} />
+                          </button>
                         </td>
-                      ))}
-                      <td className="px-2 py-1.5">
-                        <button
-                          onClick={() => removeLine(i)}
-                          disabled={lines.length === 1}
-                          className="rounded-lg p-1.5 text-gray-400 hover:bg-red-50 hover:text-red-600 disabled:opacity-30"
-                        >
-                          <Trash2 size={15} />
-                        </button>
-                      </td>
-                    </tr>
+                      </tr>
+                      {lineWarnings?.[i] && (
+                        <tr>
+                          <td colSpan={lineFields.length + 2} className="border-b border-amber-100 bg-amber-50 px-3 py-1.5 text-xs text-amber-700">
+                            {lineWarnings[i]}
+                          </td>
+                        </tr>
+                      )}
+                    </Fragment>
                   ))}
                 </tbody>
                 {hasNumericLine && (
                   <tfoot>
-                    <tr className="border-t-2 border-gray-200">
+                    <tr className="border-t-2 border-gray-200 bg-gray-50">
                       <td className="px-2 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-gray-500">Total</td>
                       {lineFields.map((f) => (
-                        <td key={f.key} className="px-2 py-1.5 text-sm font-semibold text-navy-900">
+                        <td key={f.key} className="border-l border-gray-200 px-2 py-1.5 text-sm font-semibold text-navy-900">
                           {f.type === "number" ? sumNumericField(lines, f.key) : ""}
                         </td>
                       ))}
-                      <td></td>
+                      <td className="border-l border-gray-200"></td>
                     </tr>
                   </tfoot>
                 )}
@@ -945,29 +977,29 @@ export function DocumentScreen({
 
               <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
                 <div className="mb-3 border-b border-gray-100 pb-2 text-[11px] font-semibold uppercase tracking-wide text-brand-700">Line Items</div>
-                <div className="overflow-x-auto">
-                  <table className="w-full text-sm">
+                <div className="overflow-x-auto rounded-lg border border-gray-200">
+                  <table className="w-full border-collapse text-sm">
                     <thead>
-                      <tr>
-                        <th className="w-8 px-2 pb-2 text-left text-[11px] font-semibold uppercase tracking-wide text-gray-500">#</th>
+                      <tr className="bg-gray-50">
+                        <th className="w-8 border-b border-gray-200 px-2 py-2 text-left text-[11px] font-semibold uppercase tracking-wide text-gray-500">#</th>
                         {lineFields.map((f) => (
-                          <th key={f.key} className="px-2 pb-2 text-left text-[11px] font-semibold uppercase tracking-wide text-gray-500">
+                          <th key={f.key} className="border-b border-l border-gray-200 px-2 py-2 text-left text-[11px] font-semibold uppercase tracking-wide text-gray-500">
                             {f.label}
                           </th>
                         ))}
                         {hasBaseQty && (
-                          <th className="px-2 pb-2 text-left text-[11px] font-semibold uppercase tracking-wide text-gray-500">
+                          <th className="border-b border-l border-gray-200 px-2 py-2 text-left text-[11px] font-semibold uppercase tracking-wide text-gray-500">
                             In base unit
                           </th>
                         )}
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-gray-100">
+                    <tbody>
                       {(detail.lines ?? []).map((line: any, i: number) => (
-                        <tr key={line.id ?? i}>
-                          <td className="px-2 py-1.5 text-xs text-gray-400">{i + 1}</td>
+                        <tr key={line.id ?? i} className={i % 2 === 1 ? "bg-gray-50/50" : ""}>
+                          <td className="border-b border-gray-100 px-2 py-1.5 text-xs text-gray-400">{i + 1}</td>
                           {lineFields.map((f) => (
-                            <td key={f.key} className="px-2 py-1.5 text-navy-900">
+                            <td key={f.key} className="border-b border-l border-gray-100 px-2 py-1.5 text-navy-900">
                               {f.type === "readonly"
                                 ? f.computed?.(line) ?? "-"
                                 : f.type === "select"
@@ -976,7 +1008,7 @@ export function DocumentScreen({
                             </td>
                           ))}
                           {hasBaseQty && (
-                            <td className="px-2 py-1.5 text-gray-500">
+                            <td className="border-b border-l border-gray-100 px-2 py-1.5 text-gray-500">
                               {line.baseQty != null
                                 ? `${line.baseQty} ${line.item?.baseUom?.code ?? ""}`
                                 : "no conversion set up"}
@@ -987,14 +1019,14 @@ export function DocumentScreen({
                     </tbody>
                     {hasNumericLine && (
                       <tfoot>
-                        <tr className="border-t-2 border-gray-200">
+                        <tr className="border-t-2 border-gray-200 bg-gray-50">
                           <td className="px-2 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-gray-500">Total</td>
                           {lineFields.map((f) => (
-                            <td key={f.key} className="px-2 py-1.5 text-sm font-semibold text-navy-900">
+                            <td key={f.key} className="border-l border-gray-200 px-2 py-1.5 text-sm font-semibold text-navy-900">
                               {f.type === "number" ? sumNumericField(detail.lines ?? [], f.key) : ""}
                             </td>
                           ))}
-                          {hasBaseQty && <td></td>}
+                          {hasBaseQty && <td className="border-l border-gray-200"></td>}
                         </tr>
                       </tfoot>
                     )}

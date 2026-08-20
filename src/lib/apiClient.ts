@@ -16,8 +16,15 @@ export interface AuthedUser {
   email: string;
   displayName: string;
   roles: string[];
+  /** Flat "Module.Screen.Action" strings resolved from the user's roles at login - lets a screen gate a feature (e.g. only fetch stock balances for someone who could actually view them) without needing a fresh server round trip just to find out. Still purely a UI convenience: every actual write/read is re-checked server-side regardless. */
+  permissions?: string[];
   /** Branches this user is explicitly restricted to (UserBranchAccess) - empty/absent means unrestricted (sees every branch). */
-  branches?: { id: string; code: string; name: string }[];
+  branches?: { id: string; code: string; name: string; companyId: string; defaultWarehouseId: string | null }[];
+}
+
+/** True if the logged-in user's role(s) grant this exact permission string (e.g. "Inventory.StockBalance.View"). Absent/undefined permissions (older cached session, not yet re-logged-in) fails closed. */
+export function hasPermission(user: AuthedUser | null, permission: string): boolean {
+  return !!user?.permissions?.includes(permission);
 }
 
 export class ApiError extends Error {

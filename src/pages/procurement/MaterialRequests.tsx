@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { DocumentScreen, PriorityBadge } from "../../components/DocumentScreen";
 import { useOptions } from "../../lib/useOptions";
 import { useAuth } from "../../context/AuthContext";
-import { api, type ListResponse } from "../../lib/apiClient";
+import { api, hasPermission, type ListResponse } from "../../lib/apiClient";
 
 const SOURCE_TYPES = ["Branch", "Warehouse", "CentralKitchen", "Direct"];
 const PRIORITIES = ["Low", "Normal", "High", "Urgent"];
@@ -10,6 +10,38 @@ const PRIORITIES = ["Low", "Normal", "High", "Urgent"];
 interface ItemIndexEntry {
   baseUomId: string | null;
   baseUomCode: string;
+}
+
+interface ConversionEntry {
+  itemId: string | null;
+  fromUomId: string;
+  toUomId: string;
+  factor: number;
+}
+
+/**
+ * Client-side mirror of the backend's resolveUomQty (src/utils/uomConversion.ts)
+ * - same lookup order (same unit -> item-specific -> generic -> reverse
+ * factor) - so the line grid can show a live "Total (base unit)" figure as
+ * the user types, without a round trip per keystroke. The server always
+ * recomputes baseQty itself on save regardless, so this is a preview only.
+ */
+function resolveQtyClient(
+  conversions: ConversionEntry[],
+  params: { itemId: string; fromUomId: string; toUomId: string; qty: number }
+): number | null {
+  const { itemId, fromUomId, toUomId, qty } = params;
+  if (!fromUomId || !toUomId) return null;
+  if (fromUomId === toUomId) return qty;
+  const forward = conversions.find(
+    (c) => c.fromUomId === fromUomId && c.toUomId === toUomId && (c.itemId === itemId || c.itemId === null)
+  );
+  if (forward) return qty * forward.factor;
+  const reverse = conversions.find(
+    (c) => c.fromUomId === toUomId && c.toUomId === fromUomId && (c.itemId === itemId || c.itemId === null)
+  );
+  if (reverse && reverse.factor !== 0) return qty / reverse.factor;
+  return null;
 }
 
 export default function MaterialRequests() {
@@ -24,10 +56,23 @@ export default function MaterialRequests() {
   // Item's base UOM + every configured packing conversion (item-specific or
   // generic) - fetched once and combined client-side, so a line's Unit
   // dropdown can offer "Box"/"Carton"/"Dozen" etc. for that specific item
-  // without an extra round trip per row. See uom-conversions master screen
-  // for where these get configured (Masters > UOM conversions).
+  // without an extra round trip per row, and so the "Total (base unit)"
+  // column can be computed live via resolveQtyClient above. See
+  // uom-conversions master screen for where these get configured.
   const [itemsIndex, setItemsIndex] = useState<Record<string, ItemIndexEntry>>({});
-  const [allConversions, setAllConversions] = useState<{ itemId: string | null; fromUomId: string; toUomId: string }[]>([]);
+  const [allConversions, setAllConversions] = useState<ConversionEntry[]>([]);
+
+  // Best-effort stock lookup, keyed by "warehouseId:itemId" so switching
+  // branch/warehouse doesn't show a stale number from a different location.
+  // Only ever populated for users who actually hold
+  // Inventory.StockBalance.View - see canViewStock below - so this is purely
+  // a nice-to-have, never a blocker if the permission or the stock module
+  // isn't set up for this tenant yet.
+  const [availableQtyByKey, setAvailableQtyByKey] = useState<Record<string, number | null>>({});
+  // "This item already has an open MR for this branch" - keyed by line
+  // index, populated from the check-duplicate endpoint whenever the item on
+  // a line changes.
+  const [lineWarnings, setLineWarnings] = useState<Record<number, string>>({});
 
   useEffect(() => {
     api.get<ListResponse<any>>("/api/inventory/items?pageSize=500").then((res) => {
@@ -38,7 +83,9 @@ export default function MaterialRequests() {
       );
     });
     api.get<ListResponse<any>>("/api/masters/uom-conversions?pageSize=500").then((res) => {
-      setAllConversions(res.data.map((c) => ({ itemId: c.itemId ?? null, fromUomId: c.fromUomId, toUomId: c.toUomId })));
+      setAllConversions(
+        res.data.map((c) => ({ itemId: c.itemId ?? null, fromUomId: c.fromUomId, toUomId: c.toUomId, factor: Number(c.factor) }))
+      );
     });
   }, []);
 
@@ -60,12 +107,77 @@ export default function MaterialRequests() {
   // branch never has to pick it - the field locks to that branch the same
   // way a locked auto-code field does. A user with several (or with no
   // restriction at all, i.e. head office) still chooses, just from the
-  // right list instead of every branch in the system.
+  // right list instead of every branch in the system. Company follows the
+  // same idea one level up: if every branch the user can see belongs to the
+  // same company, there's nothing to actually choose either.
   const myBranches = user?.branches;
   const singleBranch = myBranches && myBranches.length === 1 ? myBranches[0] : null;
   const branchOptions = myBranches && myBranches.length > 0
     ? myBranches.map((b) => ({ value: b.id, label: `${b.code} - ${b.name}` }))
     : allBranchOptions;
+  const distinctCompanyIds = myBranches ? Array.from(new Set(myBranches.map((b) => b.companyId))) : [];
+  const singleCompanyId = distinctCompanyIds.length === 1 ? distinctCompanyIds[0] : null;
+
+  const canViewStock = hasPermission(user, "Inventory.StockBalance.View");
+
+  // Tracks the header's current branchId/warehouseId (DocumentScreen owns
+  // the actual header state - this is just this page's own shadow copy,
+  // updated via onHeaderFieldChange) so a line-level lookup like available
+  // stock or the duplicate-MR check knows which branch/warehouse to ask
+  // about without needing DocumentScreen to expose its whole header object.
+  const [currentBranchId, setCurrentBranchId] = useState<string>(singleBranch?.id ?? "");
+  const [currentWarehouseId, setCurrentWarehouseId] = useState<string>("");
+
+  function effectiveWarehouseId(): string {
+    if (currentWarehouseId) return currentWarehouseId;
+    const branch = myBranches?.find((b) => b.id === currentBranchId);
+    return branch?.defaultWarehouseId ?? "";
+  }
+
+  function fetchAvailableQty(itemId: string) {
+    if (!canViewStock || !itemId) return;
+    const warehouseId = effectiveWarehouseId();
+    if (!warehouseId) return;
+    const key = `${warehouseId}:${itemId}`;
+    if (key in availableQtyByKey) return;
+    api
+      .get<ListResponse<any>>(`/api/inventory/stock-balances?itemId=${itemId}&warehouseId=${warehouseId}`)
+      .then((res) => {
+        const total = res.data.reduce((sum, b) => sum + Number(b.quantity ?? 0), 0);
+        setAvailableQtyByKey((prev) => ({ ...prev, [key]: total }));
+      })
+      .catch(() => {
+        // No permission, no stock module set up yet, or a transient error -
+        // either way this is a nice-to-have, so fail quietly and just leave
+        // the Available column blank for this item.
+      });
+  }
+
+  function checkDuplicate(itemId: string, index: number, excludeId: string | null) {
+    if (!itemId || !currentBranchId) return;
+    const params = new URLSearchParams({ itemId, branchId: currentBranchId });
+    if (excludeId) params.set("excludeId", excludeId);
+    api
+      .get<{ data: any[] }>(`/api/procurement/material-requests/check-duplicate?${params}`)
+      .then((res) => {
+        if (res.data.length === 0) {
+          setLineWarnings((prev) => {
+            if (!(index in prev)) return prev;
+            const next = { ...prev };
+            delete next[index];
+            return next;
+          });
+          return;
+        }
+        const first = res.data[0];
+        const extra = res.data.length > 1 ? ` (+${res.data.length - 1} more)` : "";
+        setLineWarnings((prev) => ({
+          ...prev,
+          [index]: `Already requested in ${first.mrNo} - ${first.status}, ${first.requestedQty} ${first.uomCode} on ${new Date(first.requestDate).toLocaleDateString()}${extra}`,
+        }));
+      })
+      .catch(() => {});
+  }
 
   const today = new Date().toISOString().slice(0, 10);
 
@@ -80,7 +192,25 @@ export default function MaterialRequests() {
         sourceType: "Branch",
         requestDate: today,
         ...(singleBranch ? { branchId: singleBranch.id } : {}),
+        ...(singleCompanyId ? { companyId: singleCompanyId } : {}),
       }}
+      onHeaderFieldChange={(key, value) => {
+        if (key === "branchId") setCurrentBranchId(value);
+        if (key === "warehouseId") setCurrentWarehouseId(value);
+      }}
+      onLineFieldChange={(index, key, value, _row, editingId) => {
+        if (key !== "itemId") return;
+        setLineWarnings((prev) => {
+          if (!(index in prev)) return prev;
+          const next = { ...prev };
+          delete next[index];
+          return next;
+        });
+        if (!value) return;
+        fetchAvailableQty(value);
+        checkDuplicate(value, index, editingId);
+      }}
+      lineWarnings={lineWarnings}
       listColumns={[
         { key: "mrNo", label: "MR No." },
         { key: "title", label: "Title" },
@@ -93,7 +223,15 @@ export default function MaterialRequests() {
         { key: "status", label: "Status" },
       ]}
       headerFields={[
-        { key: "companyId", label: "Company", type: "select", required: true, options: companyOptions, section: "Transaction Details" },
+        {
+          key: "companyId",
+          label: "Company",
+          type: "select",
+          required: true,
+          options: companyOptions,
+          disabled: !!singleCompanyId,
+          section: "Transaction Details",
+        },
         {
           key: "branchId",
           label: "Branch",
@@ -132,22 +270,59 @@ export default function MaterialRequests() {
           placeholder: "After this date it drops out of Consolidation/RFQ/PO",
           section: "Schedule & Validity",
         },
-        { key: "notes", label: "Narration", type: "textarea", placeholder: "Optional notes for whoever reviews or actions this MR", section: "Notes" },
+        { key: "notes", label: "Remark", type: "textarea", placeholder: "Optional notes for whoever reviews or actions this MR", section: "Notes" },
       ]}
       lineFields={[
         { key: "itemId", label: "Item", type: "select", required: true, options: itemOptions },
         { key: "baseUomDisplay", label: "Base UOM", type: "readonly", computed: (row) => itemsIndex[row.itemId]?.baseUomCode || "-" },
-        { key: "requestedQty", label: "Qty", type: "number", required: true },
+        {
+          key: "requestedQty",
+          label: "Qty",
+          type: "number",
+          required: true,
+          compact: true,
+        },
         {
           key: "uomId",
           label: "Unit",
           type: "select",
           required: true,
           options: uomOptions,
+          compact: true,
           optionsForRow: (row) => (row.itemId ? uomOptionsForItem(row.itemId) : uomOptions),
         },
+        {
+          key: "totalBaseQtyDisplay",
+          label: "Total (base unit)",
+          type: "readonly",
+          computed: (row) => {
+            const baseUomId = itemsIndex[row.itemId]?.baseUomId;
+            const qty = Number(row.requestedQty);
+            if (!row.itemId || !baseUomId || !row.uomId || !qty) return "-";
+            const total = resolveQtyClient(allConversions, { itemId: row.itemId, fromUomId: row.uomId, toUomId: baseUomId, qty });
+            return total != null ? `${total} ${itemsIndex[row.itemId]?.baseUomCode ?? ""}` : "-";
+          },
+        },
+        ...(canViewStock
+          ? [
+              {
+                key: "availableQtyDisplay",
+                label: "Available",
+                type: "readonly" as const,
+                computed: (row: Record<string, any>) => {
+                  if (!row.itemId) return "-";
+                  const warehouseId = effectiveWarehouseId();
+                  if (!warehouseId) return "select a branch";
+                  const key = `${warehouseId}:${row.itemId}`;
+                  const qty = availableQtyByKey[key];
+                  return qty === undefined ? "..." : qty === null ? "-" : `${qty} ${itemsIndex[row.itemId]?.baseUomCode ?? ""}`;
+                },
+              },
+            ]
+          : []),
+        { key: "remark", label: "Remark (optional)", type: "text", placeholder: "Note on this line" },
       ]}
-      emptyLine={{ itemId: "", requestedQty: "", uomId: "" }}
+      emptyLine={{ itemId: "", requestedQty: "", uomId: "", remark: "" }}
       lifecycle={[
         { fromStatus: "Draft", action: "submit", label: "Submit for Approval" },
         { fromStatus: "Submitted", action: "approve", label: "Approve", confirmMessage: "Approve this material request as requested?" },
