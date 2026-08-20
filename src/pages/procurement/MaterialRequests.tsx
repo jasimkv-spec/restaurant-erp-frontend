@@ -45,8 +45,8 @@ function resolveQtyClient(
 }
 
 export default function MaterialRequests() {
-  const { user } = useAuth();
-  const companyOptions = useOptions("/api/admin/companies", (c) => `${c.code} - ${c.name}`);
+  const { user, activeCompanyScope } = useAuth();
+  const allCompanyOptions = useOptions("/api/admin/companies", (c) => `${c.code} - ${c.name}`);
   const allBranchOptions = useOptions("/api/admin/branches", (b) => `${b.code} - ${b.name}`);
   const warehouseOptions = useOptions("/api/admin/warehouses", (w) => `${w.code} - ${w.name}`);
   const itemOptions = useOptions("/api/inventory/items", (i) => `${i.code} - ${i.name}`);
@@ -103,20 +103,32 @@ export default function MaterialRequests() {
     return Array.from(ids).map((id) => ({ value: id, label: uomLabelById[id] ?? id }));
   }
 
+  // Company scope is decided once, right after login (see ChooseCompany.tsx
+  // / AuthContext) - "GLOBAL" means the user deliberately wants every
+  // transaction to ask for its own Company, same as this screen behaved
+  // before company scoping existed. A real company id means everything on
+  // this screen - the Company field, the Branch choices, masters - narrows
+  // to just that company for the rest of the session.
+  const scopedCompanyId = activeCompanyScope && activeCompanyScope !== "GLOBAL" ? activeCompanyScope : null;
+
+  // Company options are restricted to what this user can actually access
+  // (from login), same principle as branch scoping below - falls back to
+  // every tenant company only for a user with no restriction recorded at all.
+  const myCompanies = user?.companies;
+  const companyOptions = myCompanies && myCompanies.length > 0
+    ? myCompanies.map((c) => ({ value: c.id, label: `${c.code} - ${c.name}` }))
+    : allCompanyOptions;
+
   // Branch scoping from login (see auth.routes.ts): a user restricted to one
   // branch never has to pick it - the field locks to that branch the same
-  // way a locked auto-code field does. A user with several (or with no
-  // restriction at all, i.e. head office) still chooses, just from the
-  // right list instead of every branch in the system. Company follows the
-  // same idea one level up: if every branch the user can see belongs to the
-  // same company, there's nothing to actually choose either.
-  const myBranches = user?.branches;
+  // way a locked auto-code field does. When a specific company is active,
+  // branches from any other company are dropped from the list entirely -
+  // no point offering a branch the current transaction can't use.
+  const myBranches = user?.branches?.filter((b) => !scopedCompanyId || b.companyId === scopedCompanyId);
   const singleBranch = myBranches && myBranches.length === 1 ? myBranches[0] : null;
   const branchOptions = myBranches && myBranches.length > 0
     ? myBranches.map((b) => ({ value: b.id, label: `${b.code} - ${b.name}` }))
     : allBranchOptions;
-  const distinctCompanyIds = myBranches ? Array.from(new Set(myBranches.map((b) => b.companyId))) : [];
-  const singleCompanyId = distinctCompanyIds.length === 1 ? distinctCompanyIds[0] : null;
 
   const canViewStock = hasPermission(user, "Inventory.StockBalance.View");
 
@@ -192,7 +204,7 @@ export default function MaterialRequests() {
         sourceType: "Branch",
         requestDate: today,
         ...(singleBranch ? { branchId: singleBranch.id } : {}),
-        ...(singleCompanyId ? { companyId: singleCompanyId } : {}),
+        ...(scopedCompanyId ? { companyId: scopedCompanyId } : {}),
       }}
       onHeaderFieldChange={(key, value) => {
         if (key === "branchId") setCurrentBranchId(value);
@@ -229,7 +241,7 @@ export default function MaterialRequests() {
           type: "select",
           required: true,
           options: companyOptions,
-          disabled: !!singleCompanyId,
+          disabled: !!scopedCompanyId,
           section: "Transaction Details",
         },
         {

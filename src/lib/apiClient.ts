@@ -10,6 +10,10 @@
 const STORAGE_TOKEN_KEY = "erp_auth_token";
 const STORAGE_TENANT_KEY = "erp_tenant_code";
 const STORAGE_USER_KEY = "erp_user";
+const STORAGE_ACTIVE_COMPANY_KEY = "erp_active_company";
+
+/** "GLOBAL" = deliberately scoped to every company the user can access (each transaction picks its own Company, same as before this feature existed). A real id = scoped to just that one company - every screen auto-selects/locks Company to it and filters branch/warehouse pickers down to it. */
+export type CompanyScope = string | "GLOBAL";
 
 export interface AuthedUser {
   id: string;
@@ -20,6 +24,8 @@ export interface AuthedUser {
   permissions?: string[];
   /** Branches this user is explicitly restricted to (UserBranchAccess) - empty/absent means unrestricted (sees every branch). */
   branches?: { id: string; code: string; name: string; companyId: string; defaultWarehouseId: string | null }[];
+  /** Every company touched by the branches above - the choices offered on the post-login company-scope screen. */
+  companies?: { id: string; code: string; name: string }[];
 }
 
 /** True if the logged-in user's role(s) grant this exact permission string (e.g. "Inventory.StockBalance.View"). Absent/undefined permissions (older cached session, not yet re-logged-in) fails closed. */
@@ -66,6 +72,16 @@ export function setSession(token: string, user: AuthedUser) {
 export function clearSession() {
   localStorage.removeItem(STORAGE_TOKEN_KEY);
   localStorage.removeItem(STORAGE_USER_KEY);
+  localStorage.removeItem(STORAGE_ACTIVE_COMPANY_KEY);
+}
+
+/** null = no choice made yet this session (RequireAuth should route to the chooser). */
+export function getActiveCompanyScope(): CompanyScope | null {
+  return (localStorage.getItem(STORAGE_ACTIVE_COMPANY_KEY) as CompanyScope | null) ?? null;
+}
+
+export function setActiveCompanyScope(scope: CompanyScope) {
+  localStorage.setItem(STORAGE_ACTIVE_COMPANY_KEY, scope);
 }
 
 async function request<T>(method: string, path: string, body?: unknown, opts?: { auth?: boolean }): Promise<T> {

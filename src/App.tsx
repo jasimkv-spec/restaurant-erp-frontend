@@ -3,6 +3,7 @@ import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import { AuthProvider, useAuth } from "./context/AuthContext";
 import Layout from "./components/Layout";
 import Login from "./pages/Login";
+import ChooseCompany from "./pages/ChooseCompany";
 import Companies from "./pages/setup/Companies";
 import Branches from "./pages/setup/Branches";
 import Warehouses from "./pages/setup/Warehouses";
@@ -37,9 +38,23 @@ import ProductFamilies from "./pages/products/ProductFamilies";
 import Brands from "./pages/products/Brands";
 import PriceGroups from "./pages/products/PriceGroups";
 
-function RequireAuth({ children }: { children: ReactNode }) {
+function ChooseCompanyGate() {
   const { isAuthenticated } = useAuth();
   if (!isAuthenticated) return <Navigate to="/login" replace />;
+  // Not gated on needsCompanyChoice - unlike RequireAuth's redirect INTO
+  // this page, a user revisiting via the sidebar's "Switch company" control
+  // should always be able to reopen the chooser even after already picking
+  // a scope once this session.
+  return <ChooseCompany />;
+}
+
+function RequireAuth({ children }: { children: ReactNode }) {
+  const { isAuthenticated, needsCompanyChoice } = useAuth();
+  if (!isAuthenticated) return <Navigate to="/login" replace />;
+  // Gate every protected route the same way, not just the post-login
+  // redirect target - covers a page refresh or a deep link too, not just
+  // the immediate landing page right after signing in.
+  if (needsCompanyChoice) return <Navigate to="/choose-company" replace />;
   return <Layout>{children}</Layout>;
 }
 
@@ -49,6 +64,7 @@ export default function App() {
       <AuthProvider>
         <Routes>
           <Route path="/login" element={<Login />} />
+          <Route path="/choose-company" element={<ChooseCompanyGate />} />
 
           <Route path="/setup/companies" element={<RequireAuth><Companies /></RequireAuth>} />
           <Route path="/setup/branches" element={<RequireAuth><Branches /></RequireAuth>} />

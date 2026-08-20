@@ -12,7 +12,7 @@ export interface CrudColumn<T> {
 export interface CrudFormField {
   key: string;
   label: string;
-  type: "text" | "number" | "select" | "checkbox" | "date";
+  type: "text" | "number" | "select" | "checkbox" | "date" | "textarea" | "file";
   required?: boolean;
   options?: { value: string; label: string }[];
   placeholder?: string;
@@ -350,7 +350,7 @@ export function CrudTable<T extends Record<string, any>>({
                   ))}
                 </div>
               ) : (
-                <div key={g.field.key}>
+                <div key={g.field.key} className={g.field.type === "textarea" || g.field.type === "file" ? "col-span-2" : ""}>
                   <label className={LABEL_CLASS}>
                     {g.field.label}
                     {g.field.required && <span className="text-red-500"> *</span>}
@@ -369,6 +369,42 @@ export function CrudTable<T extends Record<string, any>>({
                         </option>
                       ))}
                     </select>
+                  ) : g.field.type === "textarea" ? (
+                    <textarea
+                      rows={3}
+                      placeholder={g.field.placeholder}
+                      className={`${FIELD_CLASS} ${g.field.disabled ? "cursor-not-allowed bg-gray-100 text-gray-500" : ""}`}
+                      value={form[g.field.key] ?? ""}
+                      disabled={g.field.disabled}
+                      onChange={(e) => setForm((prev) => ({ ...prev, [g.field.key]: e.target.value }))}
+                    />
+                  ) : g.field.type === "file" ? (
+                    <div className="flex items-center gap-3">
+                      {form[g.field.key] && (
+                        <img
+                          src={form[g.field.key]}
+                          alt=""
+                          className="h-12 w-12 shrink-0 rounded-lg border border-gray-200 object-contain"
+                        />
+                      )}
+                      <input
+                        type="file"
+                        accept="image/*"
+                        className="block w-full text-sm text-gray-600 file:mr-3 file:rounded-lg file:border-0 file:bg-brand-50 file:px-3 file:py-2 file:text-xs file:font-semibold file:text-brand-700 hover:file:bg-brand-100"
+                        onChange={(e) => {
+                          const file = e.target.files?.[0];
+                          if (!file) return;
+                          // Stored inline as a data URL - Company.logoUrl is a
+                          // plain string column and logos are small, so this
+                          // avoids needing a dedicated upload endpoint just for
+                          // this one field. Flows through save() exactly like
+                          // any other text field, no special-casing needed.
+                          const reader = new FileReader();
+                          reader.onload = () => setForm((prev) => ({ ...prev, [g.field.key]: String(reader.result) }));
+                          reader.readAsDataURL(file);
+                        }}
+                      />
+                    </div>
                   ) : (
                     <input
                       type={g.field.type}

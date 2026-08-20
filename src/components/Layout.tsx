@@ -153,8 +153,10 @@ function initials(name: string) {
 }
 
 export default function Layout({ children }: { children: ReactNode }) {
-  const { user, logout } = useAuth();
+  const { user, logout, activeCompanyScope } = useAuth();
   const navigate = useNavigate();
+  const scopedCompany = user?.companies?.find((c) => c.id === activeCompanyScope);
+  const canSwitchCompany = (user?.companies?.length ?? 0) > 1;
   // Accordion, not independent toggles - only one group open at a time, so
   // opening a new one doesn't leave the previous group's items still
   // expanded above it (which pushed the new group's items off-screen and
@@ -245,7 +247,22 @@ export default function Layout({ children }: { children: ReactNode }) {
           })}
         </nav>
 
-        <div className="mt-2 flex items-center gap-2 border-t border-navy-600 px-2 pt-3">
+        <button
+          onClick={() => canSwitchCompany && navigate("/choose-company")}
+          disabled={!canSwitchCompany}
+          title={canSwitchCompany ? "Switch company" : undefined}
+          className={`mt-2 flex items-center gap-2 rounded-lg border-t border-navy-600 px-2 pt-3 text-left ${canSwitchCompany ? "hover:bg-navy-600" : "cursor-default"}`}
+        >
+          <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-navy-700 text-brand-500">
+            {scopedCompany ? <Building2 size={13} /> : <Globe2 size={13} />}
+          </div>
+          <div className="min-w-0 flex-1">
+            <div className="truncate text-[12px] font-medium text-white">{scopedCompany ? scopedCompany.name : "All companies"}</div>
+            {canSwitchCompany && <div className="text-[10px] text-navy-400">Switch company</div>}
+          </div>
+        </button>
+
+        <div className="flex items-center gap-2 px-2 pb-1 pt-2">
           <div className="flex h-[26px] w-[26px] shrink-0 items-center justify-center rounded-full bg-navy-700 text-[11px] font-medium text-brand-500">
             {initials(displayName || "?")}
           </div>
