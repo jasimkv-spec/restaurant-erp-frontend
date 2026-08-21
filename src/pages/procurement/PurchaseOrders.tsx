@@ -364,22 +364,22 @@ export default function PurchaseOrders() {
           disabled: !!singleBranch,
           section: "Transaction Details",
         },
-        { key: "poDate", label: "Transaction date", type: "date", required: true, section: "Transaction Details" },
-        { key: "requiredDate", label: "Required by (delivery)", type: "date", section: "Transaction Details" },
-        { key: "validityDate", label: "Valid until", type: "date", section: "Transaction Details" },
+        { key: "poDate", label: "Order Date", type: "date", required: true, section: "Transaction Details" },
+        { key: "requiredDate", label: "Required Date", type: "date", section: "Transaction Details" },
+        { key: "validityDate", label: "Valid Until", type: "date", section: "Transaction Details" },
 
         { key: "vendorId", label: "Vendor", type: "select", required: true, options: vendorOptions, section: "Vendor & Currency" },
         { key: "currencyId", label: "Currency", type: "select", options: currencyOptions, section: "Vendor & Currency" },
-        { key: "exchangeRate", label: "Exchange rate", type: "number", section: "Vendor & Currency" },
-        { key: "paymentTermsId", label: "Payment terms", type: "select", options: paymentTermsOptions, section: "Vendor & Currency" },
+        { key: "exchangeRate", label: "Exch. Rate", type: "number", section: "Vendor & Currency" },
+        { key: "paymentTermsId", label: "Pay Terms", type: "select", options: paymentTermsOptions, section: "Vendor & Currency" },
 
-        { key: "taxMode", label: "VAT / Exempt", type: "select", required: true, options: TAX_MODE_OPTIONS, section: "Pricing" },
-        { key: "discountPct", label: "Header discount %", type: "number", section: "Pricing" },
-        { key: "discountAmount", label: "Header discount amount", type: "number", section: "Pricing" },
+        { key: "taxMode", label: "Tax Mode", type: "select", required: true, options: TAX_MODE_OPTIONS, section: "Pricing" },
+        { key: "discountPct", label: "Discount %", type: "number", section: "Pricing" },
+        { key: "discountAmount", label: "Discount Amt", type: "number", section: "Pricing" },
 
-        { key: "shipmentTypeId", label: "Shipment type", type: "select", options: shipmentTypeOptions, section: "Logistics" },
-        { key: "shippingTerms", label: "Shipping terms", type: "text", placeholder: "e.g. FOB, CIF...", section: "Logistics" },
-        { key: "deliveryInstructions", label: "Delivery instructions", type: "textarea", section: "Logistics" },
+        { key: "shipmentTypeId", label: "Shipment", type: "select", options: shipmentTypeOptions, section: "Logistics" },
+        { key: "shippingTerms", label: "Ship Terms", type: "text", placeholder: "e.g. FOB, CIF...", section: "Logistics" },
+        { key: "deliveryInstructions", label: "Delivery Note", type: "textarea", section: "Logistics" },
       ]}
       linesExtra={({ header, lines, addLines }) => <MrPoolPanel header={header} lines={lines} addLines={addLines} />}
       lineFields={[

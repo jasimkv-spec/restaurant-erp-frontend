@@ -1,10 +1,21 @@
 import { Fragment, useEffect, useState } from "react";
 import { ArrowLeft, Check, FileSpreadsheet, Pencil, Plus, Printer, Trash2 } from "lucide-react";
 import { api, ApiError, type ListResponse } from "../lib/apiClient";
-import { FIELD_CLASS, LABEL_CLASS } from "./CrudTable";
+import { FIELD_CLASS } from "./CrudTable";
 import { DocumentAttachments } from "./DocumentAttachments";
 import { ListFilterBar } from "./ListFilterBar";
 import { matchesRowFilters, exportRowsToExcel, type ListFilterConfig, type DateRangeFilterConfig } from "../lib/listFilters";
+
+// A denser variant of CrudTable's shared FIELD_CLASS/LABEL_CLASS, used only
+// here - transaction screens (Material Request, RFQ, Purchase Order, ...)
+// pack a lot more fields onto one screen than a master's simple form, so
+// they read as cramped-yet-oversized at CrudTable's full padding/label size.
+// Scoped to this file rather than changed globally so master-data forms
+// (Vendors, Items, Taxes, ...) keep their original, already-fine sizing.
+// Exported so other hand-built transaction screens (Rfqs.tsx,
+// MrConsolidation.tsx) can opt into the same denser look.
+export const COMPACT_FIELD_CLASS = FIELD_CLASS.replace("px-3 py-2", "px-2 py-1.5");
+export const COMPACT_LABEL_CLASS = "text-[11px] font-semibold text-navy-900";
 
 /**
  * Generic screen for transactional documents (Material Request, Purchase
@@ -627,7 +638,7 @@ export function DocumentScreen({
       const opts = rowOptions ?? f.options ?? [];
       return (
         <select
-          className={`${FIELD_CLASS} ${disabledCls} ${compactCls}`}
+          className={`${COMPACT_FIELD_CLASS} ${disabledCls} ${compactCls}`}
           value={row[f.key] ?? ""}
           disabled={f.disabled}
           onChange={(e) => onChange(e.target.value)}
@@ -644,7 +655,7 @@ export function DocumentScreen({
     if (f.type === "textarea") {
       return (
         <textarea
-          className={`${FIELD_CLASS} ${disabledCls}`}
+          className={`${COMPACT_FIELD_CLASS} ${disabledCls}`}
           rows={2}
           placeholder={f.placeholder}
           value={row[f.key] ?? ""}
@@ -656,7 +667,7 @@ export function DocumentScreen({
     return (
       <input
         type={f.type === "date" ? "date" : f.type === "number" ? "number" : "text"}
-        className={`${FIELD_CLASS} ${disabledCls} ${compactCls}`}
+        className={`${COMPACT_FIELD_CLASS} ${disabledCls} ${compactCls}`}
         placeholder={f.placeholder}
         value={row[f.key] ?? ""}
         disabled={f.disabled}
@@ -813,14 +824,14 @@ export function DocumentScreen({
                   <div className={`mb-3 border-b ${palette.divider} pb-2 text-[11px] font-semibold uppercase tracking-wide ${palette.title}`}>
                     {group.section}
                   </div>
-                  <div className="space-y-3">
+                  <div className="space-y-1.5">
                     {group.fields.map((f) => (
-                      <div key={f.key}>
-                        <label className={LABEL_CLASS}>
+                      <div key={f.key} className="flex items-center gap-2">
+                        <label className={`${COMPACT_LABEL_CLASS} w-[38%] shrink-0`}>
                           {f.label}
                           {f.required && <span className="text-red-500"> *</span>}
                         </label>
-                        {renderFieldInput(f, header, (value) => setHeaderValue(f.key, value))}
+                        <div className="min-w-0 flex-1">{renderFieldInput(f, header, (value) => setHeaderValue(f.key, value))}</div>
                       </div>
                     ))}
                   </div>
@@ -1015,11 +1026,11 @@ export function DocumentScreen({
                       <div className={`mb-3 border-b ${palette.divider} pb-2 text-[11px] font-semibold uppercase tracking-wide ${palette.title}`}>
                         {group.section}
                       </div>
-                      <div className="space-y-3">
+                      <div className="space-y-1.5">
                         {group.fields.map((f) => (
-                          <div key={f.key}>
-                            <div className={LABEL_CLASS}>{f.label}</div>
-                            <div className="whitespace-pre-wrap text-sm text-navy-900">
+                          <div key={f.key} className="flex items-baseline gap-2">
+                            <div className={`${COMPACT_LABEL_CLASS} w-[38%] shrink-0`}>{f.label}</div>
+                            <div className="min-w-0 flex-1 whitespace-pre-wrap text-sm text-navy-900">
                               {f.type === "select" ? resolveDisplayValue(f, detail) : String(detail[f.key] ?? "-")}
                             </div>
                           </div>
