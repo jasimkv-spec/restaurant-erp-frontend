@@ -100,12 +100,6 @@ export function ProductItemsView({
     { key: "shortName", label: "Short name (for receipts/kitchen tickets)", type: "text" },
     { key: "barcode", label: "Barcode", type: "text" },
     { key: "itemType", label: "Material stage", type: "select", required: true, options: itemTypes.map((t) => ({ value: t, label: t })) },
-    {
-      key: "itemTypeId",
-      label: "Item Type",
-      type: "select",
-      options: itemTypeOptions,
-    },
     { key: "categoryId", label: "Category", type: "select", options: categoryOptions },
     { key: "groupId", label: "Product group", type: "select", options: groupOptions },
     { key: "subgroupId", label: "Product subgroup", type: "select", options: subgroupOptions },
@@ -144,7 +138,14 @@ export function ProductItemsView({
   // physically stocked (packaging, spares), so keeps reorder/purchase UOM;
   // Serialized is an Item Master-only concept (equipment/assets with
   // individual serial numbers tracked on purchase/sale).
+  //
+  // Item Type (Stock Items/Consumables/Expense Items/...) only shows here,
+  // not on Raw Material or Menu - a raw material is always stock and a menu
+  // item is never directly stocked (its ingredients are), so there's no
+  // real decision to make there. Item Master is the one bucket where it
+  // genuinely varies (packaging is stock, a service or fixed asset isn't).
   const itemFields: CrudFormField[] = [
+    { key: "itemTypeId", label: "Item Type", type: "select", options: itemTypeOptions },
     { key: "purchaseUomId", label: "Purchase UOM (if different from base)", type: "select", options: uomOptions },
     { key: "reorderLevel", label: "Reorder level", type: "number" },
     { key: "minStock", label: "Minimum stock", type: "number" },
