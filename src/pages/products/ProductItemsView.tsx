@@ -61,7 +61,30 @@ export function ProductItemsView({
   const uomOptions = useOptions("/api/masters/uoms", (u) => `${u.code} - ${u.name}`);
   const taxOptions = useOptions("/api/masters/taxes", (t) => `${t.code} - ${t.name}`);
   const itemTypeOptions = useOptions("/api/inventory/item-types", (t) => `${t.code} - ${t.name}`);
-  const menuCategoryOptions = useOptions("/api/inventory/menu-categories", (c) => `${c.code} - ${c.name}`);
+
+  // Menu category is self-referencing (a record can be top-level, like
+  // "Drinks", or nested under one, like "Hot" under "Drinks") - fetched raw
+  // here (not via useOptions) so parentId is available to split it into two
+  // pick-lists: "Menu category" only shows top-level records, "Sub
+  // category" only shows records that have a parent. The two aren't
+  // cross-filtered (picking "Drinks" doesn't limit Sub category to just its
+  // children) - same simple, unenforced relationship Group/Subgroup/Family
+  // already has elsewhere in this form.
+  const [menuCategoryOptions, setMenuCategoryOptions] = useState<{ value: string; label: string }[]>([]);
+  const [menuSubcategoryOptions, setMenuSubcategoryOptions] = useState<{ value: string; label: string }[]>([]);
+  useEffect(() => {
+    if (screen !== "menu") return;
+    let cancelled = false;
+    api.get<ListResponse<any>>("/api/inventory/menu-categories?pageSize=200").then((res) => {
+      if (cancelled) return;
+      const label = (c: any) => `${c.code} - ${c.name}`;
+      setMenuCategoryOptions(res.data.filter((c) => !c.parentId).map((c) => ({ value: c.id, label: label(c) })));
+      setMenuSubcategoryOptions(res.data.filter((c) => !!c.parentId).map((c) => ({ value: c.id, label: label(c) })));
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [screen]);
 
   // Raw Materials Master pre-selects the seeded "Stock" Item Type row for
   // every new record ("by default all raw materials will be stock items") -
@@ -81,7 +104,25 @@ export function ProductItemsView({
     };
   }, [screen]);
 
-  const coreFields: CrudFormField[] = [
+  // Menu Master defaults Base UOM to "PC" (piece/plate/serving) so quick
+  // menu entry never has to stop and think about units - still technically
+  // required (costing/recipe logic needs every item to have one), just
+  // pre-filled rather than left for you to pick.
+  const [defaultMenuUomId, setDefaultMenuUomId] = useState<string | undefined>(undefined);
+  useEffect(() => {
+    if (screen !== "menu") return;
+    let cancelled = false;
+    api.get<ListResponse<any>>("/api/masters/uoms?pageSize=200").then((res) => {
+      if (cancelled) return;
+      const pc = res.data.find((u) => u.code === "PC") ?? res.data[0];
+      if (pc) setDefaultMenuUomId(pc.id);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [screen]);
+
+  const topFields: CrudFormField[] = [
     {
       key: "code",
       label: "Code",
@@ -92,12 +133,19 @@ export function ProductItemsView({
         : "Enter a code, or configure it under Master Series to auto-generate",
     },
     { key: "name", label: "Name", type: "text", required: true },
+    { key: "nameArabic", label: "Name (Arabic)", type: "text", placeholder: "For bilingual bill printing" },
+  ];
+
+  const forFlagsFields: CrudFormField[] = [
     { key: "forSales", label: "Sales", type: "checkbox" },
     { key: "forManufacture", label: "Manufacture", type: "checkbox" },
     { key: "forFactory", label: "Factory", type: "checkbox" },
     { key: "forPurchase", label: "Purchase", type: "checkbox" },
     { key: "forPos", label: "Point of Sale", type: "checkbox" },
     { key: "forExpense", label: "Expenses", type: "checkbox" },
+  ];
+
+  const restCoreFields: CrudFormField[] = [
     { key: "shortName", label: "Short name (for receipts/kitchen tickets)", type: "text" },
     { key: "barcode", label: "Barcode", type: "text" },
     { key: "itemType", label: "Material stage", type: "select", required: true, options: itemTypes.map((t) => ({ value: t, label: t })) },
@@ -116,12 +164,15 @@ export function ProductItemsView({
   // Group/Subgroup/Family - that's Raw Material/Item Master's own
   // purchasing-side grouping (e.g. "Dairy", "Cleaning Supplies"), a
   // different audience from how a menu is organized for serving/POS.
-  // Instead Menu Master gets its own Menu Category tree (self-referencing,
-  // so it covers both a flat "Soups" and a nested "Drinks > Hot > Coffee")
-  // - see MenuCategories.tsx.
+  // Instead Menu Master gets its own Menu Category / Sub category pair,
+  // pulled from the self-referencing MenuCategory tree - see
+  // MenuCategories.tsx.
   const classificationFields: CrudFormField[] =
     screen === "menu"
-      ? [{ key: "menuCategoryId", label: "Menu category", type: "select", options: menuCategoryOptions }]
+      ? [
+          { key: "menuCategoryId", label: "Menu category", type: "select", options: menuCategoryOptions },
+          { key: "menuSubcategoryId", label: "Sub category", type: "select", options: menuSubcategoryOptions },
+        ]
       : [
           { key: "categoryId", label: "Category", type: "select", options: categoryOptions },
           { key: "groupId", label: "Product group", type: "select", options: groupOptions },
@@ -175,6 +226,14 @@ export function ProductItemsView({
 
   const extraFields = screen === "rawMaterial" ? rawMaterialFields : screen === "menu" ? menuFields : itemFields;
 
+  // Menu category/sub category go right after the name fields on Menu
+  // Master specifically ("bring it on top") - everywhere else keeps the
+  // original order, with classification staying near the end of the form.
+  const formFields =
+    screen === "menu"
+      ? [...topFields, ...classificationFields, ...forFlagsFields, ...restCoreFields, ...extraFields]
+      : [...topFields, ...forFlagsFields, ...restCoreFields, ...classificationFields, ...extraFields];
+
   return (
     <CrudTable
       title={title}
@@ -184,6 +243,7 @@ export function ProductItemsView({
       createDefaults={{
         itemType: defaultItemType,
         ...(screen === "rawMaterial" && defaultStockItemTypeId ? { itemTypeId: defaultStockItemTypeId } : {}),
+        ...(screen === "menu" && defaultMenuUomId ? { baseUomId: defaultMenuUomId } : {}),
       }}
       columns={[
         { key: "code", label: "Code" },
@@ -193,7 +253,7 @@ export function ProductItemsView({
         { key: "baseUom", label: "UOM", render: (row: any) => row.baseUom?.code },
         { key: "status", label: "Status" },
       ]}
-      formFields={[...coreFields, ...classificationFields, ...extraFields]}
+      formFields={formFields}
       extraPanel={({ editingId, form }) => (
         <>
           <ItemPricesPanel itemId={editingId} />
