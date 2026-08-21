@@ -32,6 +32,7 @@ import RawMaterialsMaster from "./pages/products/RawMaterialsMaster";
 import MenuMaster from "./pages/products/MenuMaster";
 import ItemMaster from "./pages/products/ItemMaster";
 import ItemCategories from "./pages/products/ItemCategories";
+import MenuCategories from "./pages/products/MenuCategories";
 import ProductGroups from "./pages/products/ProductGroups";
 import ProductSubgroups from "./pages/products/ProductSubgroups";
 import ProductFamilies from "./pages/products/ProductFamilies";
@@ -100,6 +101,7 @@ export default function App() {
           <Route path="/products/menu" element={<RequireAuth><MenuMaster /></RequireAuth>} />
           <Route path="/products/items" element={<RequireAuth><ItemMaster /></RequireAuth>} />
           <Route path="/products/item-categories" element={<RequireAuth><ItemCategories /></RequireAuth>} />
+          <Route path="/products/menu-categories" element={<RequireAuth><MenuCategories /></RequireAuth>} />
           <Route path="/products/product-groups" element={<RequireAuth><ProductGroups /></RequireAuth>} />
           <Route path="/products/product-subgroups" element={<RequireAuth><ProductSubgroups /></RequireAuth>} />
           <Route path="/products/product-families" element={<RequireAuth><ProductFamilies /></RequireAuth>} />

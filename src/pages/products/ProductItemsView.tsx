@@ -61,6 +61,7 @@ export function ProductItemsView({
   const uomOptions = useOptions("/api/masters/uoms", (u) => `${u.code} - ${u.name}`);
   const taxOptions = useOptions("/api/masters/taxes", (t) => `${t.code} - ${t.name}`);
   const itemTypeOptions = useOptions("/api/inventory/item-types", (t) => `${t.code} - ${t.name}`);
+  const menuCategoryOptions = useOptions("/api/inventory/menu-categories", (c) => `${c.code} - ${c.name}`);
 
   // Raw Materials Master pre-selects the seeded "Stock" Item Type row for
   // every new record ("by default all raw materials will be stock items") -
@@ -111,19 +112,16 @@ export function ProductItemsView({
 
   // Menu items don't need an accounting Category - their revenue posts via
   // Sales Channel, not Item Category's Inventory/COGS GL defaults - so it's
-  // dropped here rather than shown but meaningless. What a menu genuinely
-  // needs is a merchandising hierarchy (Rice > White Rice > Biriyani, Juice
-  // > Orange), which is exactly what Group/Subgroup/Family already is
-  // (no GL attached) - just relabeled here so its job on this screen is
-  // obvious. Raw Material and Item Master keep the generic labels plus
-  // Category, since GL mapping genuinely applies to what they stock.
+  // dropped here rather than shown but meaningless. They also don't use
+  // Group/Subgroup/Family - that's Raw Material/Item Master's own
+  // purchasing-side grouping (e.g. "Dairy", "Cleaning Supplies"), a
+  // different audience from how a menu is organized for serving/POS.
+  // Instead Menu Master gets its own Menu Category tree (self-referencing,
+  // so it covers both a flat "Soups" and a nested "Drinks > Hot > Coffee")
+  // - see MenuCategories.tsx.
   const classificationFields: CrudFormField[] =
     screen === "menu"
-      ? [
-          { key: "groupId", label: "Menu category", type: "select", options: groupOptions },
-          { key: "subgroupId", label: "Sub-category", type: "select", options: subgroupOptions },
-          { key: "familyId", label: "Dish type", type: "select", options: familyOptions },
-        ]
+      ? [{ key: "menuCategoryId", label: "Menu category", type: "select", options: menuCategoryOptions }]
       : [
           { key: "categoryId", label: "Category", type: "select", options: categoryOptions },
           { key: "groupId", label: "Product group", type: "select", options: groupOptions },

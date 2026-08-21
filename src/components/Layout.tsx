@@ -109,6 +109,7 @@ const NAV: NavGroup[] = [
       { label: "Menu Master", path: "/products/menu", icon: UtensilsCrossed },
       { label: "Item Master", path: "/products/items", icon: Boxes },
       { label: "Item categories", path: "/products/item-categories", icon: FolderTree },
+      { label: "Menu categories", path: "/products/menu-categories", icon: FolderTree },
       { label: "Product groups", path: "/products/product-groups", icon: Tags },
       { label: "Product subgroups", path: "/products/product-subgroups", icon: Tags },
       { label: "Product families", path: "/products/product-families", icon: Tags },
