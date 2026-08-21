@@ -250,6 +250,10 @@ export default function PurchaseOrders() {
     return Array.from(ids).map((id) => ({ value: id, label: uomLabelById[id] ?? id }));
   }
 
+  function isFocRow(row: Record<string, any>): boolean {
+    return row.isFocLine === "true" || row.isFocLine === true;
+  }
+
   // Preview-only math mirroring poCalc.ts's per-line logic (gross -> less
   // line discount -> tax on what's left), so the user can see roughly what
   // they'll get back after saving. Deliberately does NOT prorate the header
@@ -257,8 +261,7 @@ export default function PurchaseOrders() {
   // not just this one row) - the real, header-discount-aware figures come
   // back from the server once the document is saved.
   function lineNet(row: Record<string, any>): number {
-    const isFoc = row.isFocLine === "true" || row.isFocLine === true;
-    const gross = isFoc ? 0 : (Number(row.qty) || 0) * (Number(row.unitPrice) || 0);
+    const gross = isFocRow(row) ? 0 : (Number(row.qty) || 0) * (Number(row.unitPrice) || 0);
     const discAmt = row.discountAmount !== "" && row.discountAmount != null
       ? Number(row.discountAmount)
       : row.discountPct
@@ -441,9 +444,12 @@ export default function PurchaseOrders() {
         { key: "exchangeRate", label: "Exch. Rate", type: "number", section: "Vendor & Currency" },
         { key: "paymentTermsId", label: "Pay Terms", type: "select", options: paymentTermsOptions, section: "Vendor & Currency" },
 
-        { key: "taxMode", label: "Tax Mode", type: "select", required: true, options: TAX_MODE_OPTIONS, section: "Pricing" },
-        { key: "discountPct", label: "Discount %", type: "number", section: "Pricing" },
-        { key: "discountAmount", label: "Discount Amt", type: "number", section: "Pricing" },
+        // Hidden from the printout - the totals box after the Line Items
+        // grid already surfaces Tax (VAT) and the combined discount, so
+        // repeating the raw settings here would just be redundant on paper.
+        { key: "taxMode", label: "Tax Mode", type: "select", required: true, options: TAX_MODE_OPTIONS, section: "Pricing", hideInPrint: true },
+        { key: "discountPct", label: "Discount %", type: "number", section: "Pricing", hideInPrint: true },
+        { key: "discountAmount", label: "Discount Amt", type: "number", section: "Pricing", hideInPrint: true },
 
         { key: "shipmentTypeId", label: "Shipment", type: "select", options: shipmentTypeOptions, section: "Logistics" },
         { key: "shippingTerms", label: "Ship Terms", type: "text", placeholder: "e.g. FOB, CIF...", section: "Logistics" },
@@ -452,8 +458,20 @@ export default function PurchaseOrders() {
       linesExtra={({ header, lines, addLines }) => <MrPoolPanel header={header} lines={lines} addLines={addLines} />}
       lineFields={[
         { key: "itemId", label: "Item", type: "select", required: true, options: itemOptions },
+        { key: "instructions", label: "Instruction", type: "text" },
         { key: "baseUomDisplay", label: "Base UOM", type: "readonly", computed: (row) => itemsIndex[row.itemId]?.baseUomCode || "-" },
-        { key: "qty", label: "Qty", type: "number", required: true, compact: true },
+        {
+          key: "qty",
+          label: "Qty",
+          type: "number",
+          required: true,
+          compact: true,
+          // A fully-FOC line is entirely free - showing its stored qty here
+          // (unchanged, still needed for receiving) would read as a charged
+          // quantity, so the read-only views show 0 and let FOC Qty below
+          // carry the actual free quantity instead.
+          displayValue: (row) => (isFocRow(row) ? "0" : String(row.qty ?? "-")),
+        },
         {
           key: "uomId",
           label: "Unit",
@@ -466,14 +484,42 @@ export default function PurchaseOrders() {
         { key: "unitPrice", label: "Unit Price", type: "number", required: true, compact: true },
         { key: "discountPct", label: "Disc %", type: "number", compact: true },
         { key: "discountAmount", label: "Disc Amt", type: "number", compact: true },
-        { key: "isFocLine", label: "FOC line?", type: "select", options: YES_NO, compact: true },
-        { key: "focQty", label: "FOC Qty", type: "number", compact: true },
-        { key: "taxId", label: "Tax", type: "select", options: taxOptions },
+        // The Yes/No toggle itself stays on the editable form (it's what
+        // actually flags a line as free) but is redundant on paper once FOC
+        // Qty already shows the free quantity, so it's dropped from print.
+        { key: "isFocLine", label: "FOC line?", type: "select", options: YES_NO, compact: true, hideInPrint: true },
+        {
+          key: "focQty",
+          label: "FOC Qty",
+          type: "number",
+          compact: true,
+          // For a fully-FOC line the free quantity is what's stored in qty
+          // (see the qty column above); for an ordinary line it's this
+          // field. Blank when there's nothing free, so the column reads at
+          // a glance instead of a row of zeroes.
+          displayValue: (row) => {
+            const val = isFocRow(row) ? Number(row.qty) || 0 : Number(row.focQty) || 0;
+            return val > 0 ? String(val) : "-";
+          },
+        },
+        {
+          key: "taxId",
+          label: "Tax",
+          type: "select",
+          options: taxOptions,
+          // Read-only views show just the rate - the full tax name/code is
+          // only needed while picking the right one on the editable form.
+          displayValue: (row) => (row.taxId ? `${taxRateById[row.taxId] ?? 0}%` : "-"),
+        },
         {
           key: "headerDiscountShareDisplay",
           label: "Header Disc. Share",
           type: "readonly",
           computed: (row, ctx) => lineHeaderDiscountShare(row, ctx).toFixed(2),
+          // Kept on screen for GRN/ledger reference, but dropped from print -
+          // the printed totals box already shows header + line discount
+          // combined into a single Discount figure.
+          hideInPrint: true,
         },
         {
           key: "taxAmountDisplay",
@@ -487,7 +533,6 @@ export default function PurchaseOrders() {
           type: "readonly",
           computed: (row) => (lineNet(row) + lineTaxPreview(row)).toFixed(2),
         },
-        { key: "instructions", label: "Instruction", type: "text" },
       ]}
       emptyLine={{
         itemId: "",

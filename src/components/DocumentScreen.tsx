@@ -54,6 +54,18 @@ export interface DocFieldConfig {
    * the row itself can ignore it.
    */
   computed?: (row: Record<string, any>, ctx?: { rows: Record<string, any>[]; header: Record<string, any> }) => string;
+  /**
+   * Overrides how this field's own stored value renders in a read-only
+   * context (detail view, print) - unlike `computed` (for a "readonly" field
+   * with no stored value of its own), this is for a field the user CAN edit
+   * but whose raw value isn't what should be shown once saved, e.g. a Tax
+   * select field showing just its rate ("5%") instead of the tax's full
+   * name, or a Qty column showing 0 for a fully-FOC line instead of the
+   * quantity actually stored. Never affects the editable form input itself.
+   */
+  displayValue?: (row: Record<string, any>) => string;
+  /** Drops this field from the printed document entirely (still shown on screen, in both the editable form and the detail view) - for fields that are either redundant on paper (already summarized elsewhere, e.g. a header discount vs. the combined total below the lines) or only meaningful while editing (e.g. the FOC-line toggle, once the FOC Qty column already conveys the same information). */
+  hideInPrint?: boolean;
   required?: boolean;
   placeholder?: string;
   /** Greys the field out and blocks input - e.g. a branch that's auto-selected because the user only has access to one. */
@@ -154,6 +166,14 @@ function toDateInputValue(value: any): string {
   return d.toISOString().slice(0, 10);
 }
 
+/** "2026-08-19T00:00:00.000Z" -> "8/19/2026", for a "date" field's read-only display (detail view, print) - a transaction date never needs the time-of-day that a raw ISO string carries. */
+function formatDateOnly(value: any): string {
+  if (!value) return "-";
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return String(value);
+  return d.toLocaleDateString();
+}
+
 /**
  * Resolves what to show for a select-type field's value in a read-only
  * context (detail view). Prefers the matching relation object the API
@@ -171,6 +191,26 @@ function resolveDisplayValue(f: DocFieldConfig, row: Record<string, any>): strin
     if (relation.name) return relation.name;
   }
   return f.options?.find((o) => o.value === row[f.key])?.label ?? row[f.key] ?? "-";
+}
+
+/**
+ * Single source of truth for how any field renders in a read-only context
+ * (detail view, print) - used instead of ad-hoc per-type ternaries so the
+ * two places don't drift. Precedence: a field's own displayValue always
+ * wins (e.g. showing a Tax field's rate instead of its full name, or a Qty
+ * column's FOC-aware figure) over the default type-based rendering, since
+ * it's an explicit per-field override the caller opted into.
+ */
+function resolveReadOnlyValue(
+  f: DocFieldConfig,
+  row: Record<string, any>,
+  ctx?: { rows: Record<string, any>[]; header: Record<string, any> }
+): string {
+  if (f.displayValue) return f.displayValue(row) ?? "-";
+  if (f.type === "readonly") return f.computed?.(row, ctx) ?? "-";
+  if (f.type === "select") return resolveDisplayValue(f, row);
+  if (f.type === "date") return formatDateOnly(row[f.key]);
+  return String(row[f.key] ?? "-");
 }
 
 /** Cycled by section index so a 4-panel header (Transaction/Party/Reference/Payment, say) reads as visually distinct blocks rather than one undifferentiated field grid - same idea as a standard ERP transaction screen's colored header strips. */
@@ -612,15 +652,22 @@ export function DocumentScreen({
         <div style="border-top:2px solid #1d4ed8;margin-bottom:14px;"></div>`
       : "";
 
-    const sections = groupBySection(headerFields);
+    // Fields flagged hideInPrint stay in the editable form and detail view
+    // (still useful to see/edit on screen) but drop out of the printed
+    // document - e.g. the Pricing section (already summarized in the totals
+    // box below the lines) or a FOC-line toggle (redundant once the FOC Qty
+    // column itself shows the free quantity).
+    const printHeaderFields = headerFields.filter((f) => !f.hideInPrint);
+    const printLineFields = lineFields.filter((f) => !f.hideInPrint);
+    const printLineCtx = { rows: record.lines ?? [], header: record };
+
+    const sections = groupBySection(printHeaderFields);
     const sectionPanels = sections
       .map((group, i) => {
         const rows = group.fields
           .map(
             (f) =>
-              `<tr><td style="padding:3px 0;color:#666;">${f.label}</td><td style="padding:3px 0 3px 8px;font-weight:600;text-align:right;">${
-                f.type === "select" ? resolveDisplayValue(f, record) : String(record[f.key] ?? "-")
-              }</td></tr>`
+              `<tr><td style="padding:3px 0;color:#666;vertical-align:top;">${f.label}</td><td style="padding:3px 0 3px 8px;font-weight:600;text-align:right;vertical-align:top;">${resolveReadOnlyValue(f, record)}</td></tr>`
           )
           .join("");
         const bg = PRINT_SECTION_COLORS[i % PRINT_SECTION_COLORS.length];
@@ -633,27 +680,21 @@ export function DocumentScreen({
         </td>`;
       })
       .join("");
-    const lineHeaderCells = ["#", ...lineFields.map((f) => f.label), ...(recHasBaseQty ? ["In base unit"] : [])]
-      .map((h) => `<th style="padding:6px 10px;border:1px solid #ddd;background:#f3f4f6;text-align:left;">${h}</th>`)
+    const lineHeaderCells = ["#", ...printLineFields.map((f) => f.label), ...(recHasBaseQty ? ["In base unit"] : [])]
+      .map((h) => `<th style="padding:6px 10px;border:1px solid #ddd;background:#f3f4f6;text-align:left;vertical-align:top;">${h}</th>`)
       .join("");
     const lineBodyRows = (record.lines ?? [])
       .map((line: any, i: number) => {
         const cells = [
           String(i + 1),
-          ...lineFields.map((f) =>
-            f.type === "readonly"
-              ? f.computed?.(line, { rows: record.lines ?? [], header: record }) ?? "-"
-              : f.type === "select"
-                ? resolveDisplayValue(f, line)
-                : String(line[f.key] ?? "-")
-          ),
+          ...printLineFields.map((f) => resolveReadOnlyValue(f, line, printLineCtx)),
           ...(recHasBaseQty ? [line.baseQty != null ? `${line.baseQty} ${line.item?.baseUom?.code ?? ""}` : "-"] : []),
         ];
-        return `<tr${i % 2 === 1 ? ' style="background:#fafafa;"' : ""}>${cells.map((c) => `<td style="padding:6px 10px;border:1px solid #ddd;">${c}</td>`).join("")}</tr>`;
+        return `<tr${i % 2 === 1 ? ' style="background:#fafafa;"' : ""}>${cells.map((c) => `<td style="padding:6px 10px;border:1px solid #ddd;vertical-align:top;">${c}</td>`).join("")}</tr>`;
       })
       .join("");
     const totalsRow = recHasNumericLine
-      ? `<tr>${["Total", ...lineFields.map((f) => (f.type === "number" ? String(sumNumericField(record.lines ?? [], f.key)) : "")), ...(recHasBaseQty ? [""] : [])]
+      ? `<tr>${["Total", ...printLineFields.map((f) => (f.type === "number" ? String(sumNumericField(record.lines ?? [], f.key)) : "")), ...(recHasBaseQty ? [""] : [])]
           .map((c) => `<td style="padding:6px 10px;border:1px solid #ddd;font-weight:700;">${c}</td>`)
           .join("")}</tr>`
       : "";
@@ -1145,7 +1186,7 @@ export function DocumentScreen({
                           <div key={f.key} className="flex items-baseline gap-2">
                             <div className={`${COMPACT_LABEL_CLASS} w-[38%] shrink-0`}>{f.label}</div>
                             <div className="min-w-0 flex-1 whitespace-pre-wrap text-sm text-navy-900">
-                              {f.type === "select" ? resolveDisplayValue(f, detail) : String(detail[f.key] ?? "-")}
+                              {resolveReadOnlyValue(f, detail)}
                             </div>
                           </div>
                         ))}
@@ -1213,11 +1254,7 @@ export function DocumentScreen({
                           <td className="border-b border-gray-100 px-2 py-1.5 text-xs text-gray-400">{i + 1}</td>
                           {lineFields.map((f) => (
                             <td key={f.key} style={{ minWidth: lineColMinWidth(f) }} className="border-b border-l border-gray-100 px-2 py-1.5 text-navy-900">
-                              {f.type === "readonly"
-                                ? f.computed?.(line, { rows: detail.lines ?? [], header: detail }) ?? "-"
-                                : f.type === "select"
-                                  ? resolveDisplayValue(f, line)
-                                  : String(line[f.key] ?? "-")}
+                              {resolveReadOnlyValue(f, line, { rows: detail.lines ?? [], header: detail })}
                             </td>
                           ))}
                           {hasBaseQty && (
