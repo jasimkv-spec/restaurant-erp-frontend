@@ -1,10 +1,24 @@
-import { useEffect, useState } from "react";
-import { ArrowLeft, Plus, Send, Trophy, ShoppingCart, X } from "lucide-react";
+import { useEffect, useRef, useState, type ChangeEvent } from "react";
+import { ArrowLeft, Plus, Send, Trophy, ShoppingCart, X, Download, Upload, FileSpreadsheet } from "lucide-react";
+import * as XLSX from "xlsx";
 import { api, ApiError, type ListResponse } from "../../lib/apiClient";
 import { useAuth } from "../../context/AuthContext";
 import { useOptions } from "../../lib/useOptions";
 import { FIELD_CLASS, LABEL_CLASS } from "../../components/CrudTable";
 import { StatusBadge } from "../../components/DocumentScreen";
+
+// Column headers used both when generating the blank template and when
+// reading a vendor's completed one back - keeping these as named constants
+// (rather than repeating the literal strings) means a header tweak only
+// has to happen in one place.
+const TEMPLATE_HEADERS = {
+  itemCode: "Item Code",
+  itemName: "Item Name",
+  qty: "Qty",
+  unit: "Unit",
+  price: "Price",
+  leadTime: "Lead Time (Days)",
+} as const;
 
 interface RfqListRow {
   id: string;
@@ -510,6 +524,10 @@ function DetailView({
             </div>
           </div>
 
+          {detail.status !== "Closed" && detail.status !== "Cancelled" && (
+            <ExcelQuotePanel rfqId={detail.id} lines={detail.lines} vendorOptions={vendorOptions} onDone={load} />
+          )}
+
           <div className="mb-5 space-y-4">
             {detail.lines.map((line) => (
               <RfqLinePanel
@@ -561,6 +579,144 @@ function DetailView({
         </>
       )}
     </>
+  );
+}
+
+/**
+ * Bulk quote entry for RFQs with many items/vendors, where recording one
+ * quote at a time in RfqLinePanel below would mean dozens of clicks.
+ * "Download template" builds an .xlsx client-side from this RFQ's own
+ * lines (Item Code/Name/Qty/Unit + blank Price/Lead Time columns) - send
+ * that to a vendor to fill in and return. "Upload" reads their completed
+ * file back, matches each row to a line by Item Code, and records one
+ * quote per matched row via the same POST /rfqs/:id/quotes endpoint the
+ * one-at-a-time form uses - no separate bulk-import endpoint needed.
+ */
+function ExcelQuotePanel({
+  rfqId,
+  lines,
+  vendorOptions,
+  onDone,
+}: {
+  rfqId: string;
+  lines: RfqLine[];
+  vendorOptions: { value: string; label: string }[];
+  onDone: () => void;
+}) {
+  const [vendorId, setVendorId] = useState("");
+  const [uploading, setUploading] = useState(false);
+  const [result, setResult] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  function downloadTemplate() {
+    const rows = lines.map((l) => ({
+      [TEMPLATE_HEADERS.itemCode]: l.item?.code ?? l.itemId,
+      [TEMPLATE_HEADERS.itemName]: l.item?.name ?? "",
+      [TEMPLATE_HEADERS.qty]: Number(l.qty),
+      [TEMPLATE_HEADERS.unit]: l.uom?.code ?? "",
+      [TEMPLATE_HEADERS.price]: "",
+      [TEMPLATE_HEADERS.leadTime]: "",
+    }));
+    const sheet = XLSX.utils.json_to_sheet(rows);
+    (sheet as any)["!cols"] = [{ wch: 14 }, { wch: 30 }, { wch: 8 }, { wch: 8 }, { wch: 10 }, { wch: 14 }];
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, sheet, "Quote");
+    XLSX.writeFile(workbook, `RFQ-quote-template.xlsx`);
+  }
+
+  async function handleUpload(e: ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file || !vendorId) return;
+    setUploading(true);
+    setError(null);
+    setResult(null);
+    try {
+      const buffer = await file.arrayBuffer();
+      const workbook = XLSX.read(buffer, { type: "array" });
+      const sheet = workbook.Sheets[workbook.SheetNames[0]];
+      const parsedRows = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet);
+
+      const lineByCode = new Map(lines.map((l) => [(l.item?.code ?? "").trim().toLowerCase(), l]));
+
+      let recorded = 0;
+      let skipped = 0;
+      for (const row of parsedRows) {
+        const code = String(row[TEMPLATE_HEADERS.itemCode] ?? "").trim().toLowerCase();
+        const line = code ? lineByCode.get(code) : undefined;
+        const price = Number(row[TEMPLATE_HEADERS.price]);
+        if (!line || !Number.isFinite(price)) {
+          skipped++;
+          continue;
+        }
+        const leadTimeRaw = row[TEMPLATE_HEADERS.leadTime];
+        const leadTimeDays = leadTimeRaw !== undefined && leadTimeRaw !== "" ? Number(leadTimeRaw) : undefined;
+        await api.post(`/api/procurement/rfqs/${rfqId}/quotes`, {
+          rfqLineId: line.id,
+          vendorId,
+          quotedPrice: price,
+          leadTimeDays: Number.isFinite(leadTimeDays as number) ? leadTimeDays : undefined,
+        });
+        recorded++;
+      }
+
+      setResult(
+        `${recorded} quote${recorded === 1 ? "" : "s"} recorded${skipped > 0 ? `, ${skipped} row${skipped === 1 ? "" : "s"} skipped (no matching item code or price)` : ""}.`
+      );
+      onDone();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Could not read that file - make sure it's the downloaded template with Item Code and Price filled in.");
+    } finally {
+      setUploading(false);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  }
+
+  return (
+    <div className="mb-5 rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
+      <div className="mb-3 flex items-center gap-1.5 border-b border-gray-100 pb-2 text-[11px] font-semibold uppercase tracking-wide text-brand-700">
+        <FileSpreadsheet size={12} />
+        Vendor quotes via Excel
+      </div>
+      <p className="mb-3 text-xs text-gray-500">
+        For RFQs with many items - download the item list, send it to a vendor to fill in Price (and optionally
+        Lead Time), then upload their completed file back to record all their quotes at once instead of one at a
+        time below.
+      </p>
+      {error && <div className="mb-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div>}
+      {result && (
+        <div className="mb-3 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700">{result}</div>
+      )}
+      <div className="flex flex-wrap items-end gap-2">
+        <button
+          onClick={downloadTemplate}
+          className="flex items-center gap-1.5 rounded-lg border border-gray-300 bg-white px-3 py-2 text-xs font-semibold text-gray-700 hover:bg-gray-50"
+        >
+          <Download size={13} />
+          Download template
+        </button>
+        <div className="w-56">
+          <label className={LABEL_CLASS}>Vendor this file is from</label>
+          <select className={FIELD_CLASS} value={vendorId} onChange={(e) => setVendorId(e.target.value)}>
+            <option value="">Select...</option>
+            {vendorOptions.map((o) => (
+              <option key={o.value} value={o.value}>
+                {o.label}
+              </option>
+            ))}
+          </select>
+        </div>
+        <button
+          onClick={() => fileInputRef.current?.click()}
+          disabled={!vendorId || uploading}
+          className="flex items-center gap-1.5 rounded-lg bg-brand-600 px-3 py-2 text-xs font-semibold text-white shadow-sm hover:bg-brand-700 disabled:opacity-50"
+        >
+          <Upload size={13} />
+          {uploading ? "Uploading..." : "Upload completed file"}
+        </button>
+        <input ref={fileInputRef} type="file" accept=".xlsx,.xls" className="hidden" onChange={handleUpload} />
+      </div>
+    </div>
   );
 }
 
