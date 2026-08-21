@@ -35,9 +35,12 @@ interface PoPoolRow {
   qty: number;
 }
 
+// Kept short since this renders inside a native <select> - the closed box
+// only has room for a few words before the browser clips it. The field's
+// own label ("VAT / Exempt") already carries the rest of the context.
 const TAX_MODE_OPTIONS = [
-  { value: "Vatable", label: "Vatable - tax applies per item's own configuration" },
-  { value: "Exempt", label: "Exempt - the whole PO is tax-free" },
+  { value: "Vatable", label: "Vatable" },
+  { value: "Exempt", label: "Exempt" },
 ];
 
 const YES_NO = [

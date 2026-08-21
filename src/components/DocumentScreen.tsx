@@ -181,6 +181,34 @@ function sumNumericField(rows: Record<string, any>[], key: string): number {
   return rows.reduce((sum, r) => sum + (Number(r[key]) || 0), 0);
 }
 
+/**
+ * Floor width (px) for a line-item column, applied to both the <th> and its
+ * <td>s. Without this, a table with a lot of lineFields (e.g. Purchase
+ * Order's 13+ columns) gets squeezed by the browser's auto table layout to
+ * fit the visible width, shrinking every select/input down to a sliver that
+ * shows one truncated character - exactly the "fields not visible" problem.
+ * Giving each column an explicit floor, combined with min-w-full (not
+ * w-full) on the <table> itself, lets wide line grids grow past the
+ * container and scroll horizontally (the wrapping div is overflow-x-auto)
+ * instead of being crushed - while a normal 5-6 column grid (Material
+ * Request, say) still renders exactly as before, evenly filling the width.
+ */
+function lineColMinWidth(f: DocFieldConfig): number {
+  if (f.compact) return 90;
+  switch (f.type) {
+    case "select":
+      return 170;
+    case "textarea":
+      return 180;
+    case "readonly":
+      return 110;
+    case "date":
+      return 140;
+    default:
+      return 150;
+  }
+}
+
 export function DocumentScreen({
   title,
   description,
@@ -816,12 +844,16 @@ export function DocumentScreen({
             </div>
 
             <div className="overflow-x-auto rounded-lg border border-gray-200">
-              <table className="w-full border-collapse text-sm">
+              <table className="min-w-full border-collapse text-sm">
                 <thead>
                   <tr className="bg-gray-50">
                     <th className="w-8 border-b border-gray-200 px-2 py-2 text-left text-[11px] font-semibold uppercase tracking-wide text-gray-500">#</th>
                     {lineFields.map((f) => (
-                      <th key={f.key} className="border-b border-l border-gray-200 px-2 py-2 text-left text-[11px] font-semibold uppercase tracking-wide text-gray-500">
+                      <th
+                        key={f.key}
+                        style={{ minWidth: lineColMinWidth(f) }}
+                        className="border-b border-l border-gray-200 px-2 py-2 text-left text-[11px] font-semibold uppercase tracking-wide text-gray-500"
+                      >
                         {f.label}
                       </th>
                     ))}
@@ -834,7 +866,7 @@ export function DocumentScreen({
                       <tr className={i % 2 === 1 ? "bg-gray-50/50" : ""}>
                         <td className="border-b border-gray-100 px-2 py-1.5 text-xs text-gray-400">{i + 1}</td>
                         {lineFields.map((f) => (
-                          <td key={f.key} className="border-b border-l border-gray-100 px-2 py-1.5">
+                          <td key={f.key} style={{ minWidth: lineColMinWidth(f) }} className="border-b border-l border-gray-100 px-2 py-1.5">
                             {renderFieldInput(f, line, (value) => setLineValue(i, f.key, value), f.optionsForRow?.(line))}
                           </td>
                         ))}
@@ -863,7 +895,7 @@ export function DocumentScreen({
                     <tr className="border-t-2 border-gray-200 bg-gray-50">
                       <td className="px-2 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-gray-500">Total</td>
                       {lineFields.map((f) => (
-                        <td key={f.key} className="border-l border-gray-200 px-2 py-1.5 text-sm font-semibold text-navy-900">
+                        <td key={f.key} style={{ minWidth: lineColMinWidth(f) }} className="border-l border-gray-200 px-2 py-1.5 text-sm font-semibold text-navy-900">
                           {f.type === "number" ? sumNumericField(lines, f.key) : ""}
                         </td>
                       ))}
@@ -1030,12 +1062,16 @@ export function DocumentScreen({
               <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
                 <div className="mb-3 border-b border-gray-100 pb-2 text-[11px] font-semibold uppercase tracking-wide text-brand-700">Line Items</div>
                 <div className="overflow-x-auto rounded-lg border border-gray-200">
-                  <table className="w-full border-collapse text-sm">
+                  <table className="min-w-full border-collapse text-sm">
                     <thead>
                       <tr className="bg-gray-50">
                         <th className="w-8 border-b border-gray-200 px-2 py-2 text-left text-[11px] font-semibold uppercase tracking-wide text-gray-500">#</th>
                         {lineFields.map((f) => (
-                          <th key={f.key} className="border-b border-l border-gray-200 px-2 py-2 text-left text-[11px] font-semibold uppercase tracking-wide text-gray-500">
+                          <th
+                            key={f.key}
+                            style={{ minWidth: lineColMinWidth(f) }}
+                            className="border-b border-l border-gray-200 px-2 py-2 text-left text-[11px] font-semibold uppercase tracking-wide text-gray-500"
+                          >
                             {f.label}
                           </th>
                         ))}
@@ -1051,7 +1087,7 @@ export function DocumentScreen({
                         <tr key={line.id ?? i} className={i % 2 === 1 ? "bg-gray-50/50" : ""}>
                           <td className="border-b border-gray-100 px-2 py-1.5 text-xs text-gray-400">{i + 1}</td>
                           {lineFields.map((f) => (
-                            <td key={f.key} className="border-b border-l border-gray-100 px-2 py-1.5 text-navy-900">
+                            <td key={f.key} style={{ minWidth: lineColMinWidth(f) }} className="border-b border-l border-gray-100 px-2 py-1.5 text-navy-900">
                               {f.type === "readonly"
                                 ? f.computed?.(line) ?? "-"
                                 : f.type === "select"
@@ -1074,7 +1110,7 @@ export function DocumentScreen({
                         <tr className="border-t-2 border-gray-200 bg-gray-50">
                           <td className="px-2 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-gray-500">Total</td>
                           {lineFields.map((f) => (
-                            <td key={f.key} className="border-l border-gray-200 px-2 py-1.5 text-sm font-semibold text-navy-900">
+                            <td key={f.key} style={{ minWidth: lineColMinWidth(f) }} className="border-l border-gray-200 px-2 py-1.5 text-sm font-semibold text-navy-900">
                               {f.type === "number" ? sumNumericField(detail.lines ?? [], f.key) : ""}
                             </td>
                           ))}
