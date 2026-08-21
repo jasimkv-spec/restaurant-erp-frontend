@@ -114,6 +114,7 @@ const NAV: NavGroup[] = [
       { label: "Product families", path: "/products/product-families", icon: Tags },
       { label: "Brands", path: "/products/brands", icon: Award },
       { label: "Price groups", path: "/products/price-groups", icon: Layers3 },
+      { label: "Item types", path: "/products/item-types", icon: SlidersHorizontal },
     ],
   },
   { key: "inventory", label: "Inventory", icon: LayoutGrid, items: [], comingSoon: true },

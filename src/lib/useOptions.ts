@@ -7,20 +7,21 @@ import { api, type ListResponse } from "./apiClient";
  * below a company/branch needs at least one of these (Branch needs
  * Company, Warehouse needs Branch, and so on).
  */
-export function useOptions(path: string | null, labelFn: (row: any) => string) {
+export function useOptions(path: string | null, labelFn: (row: any) => string, extraQuery?: string) {
   const [options, setOptions] = useState<{ value: string; label: string }[]>([]);
 
   useEffect(() => {
     if (!path) return;
     let cancelled = false;
-    api.get<ListResponse<any>>(`${path}?pageSize=200`).then((res) => {
+    const query = `pageSize=200${extraQuery ? `&${extraQuery}` : ""}`;
+    api.get<ListResponse<any>>(`${path}?${query}`).then((res) => {
       if (!cancelled) setOptions(res.data.map((row) => ({ value: row.id, label: labelFn(row) })));
     });
     return () => {
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [path]);
+  }, [path, extraQuery]);
 
   return options;
 }

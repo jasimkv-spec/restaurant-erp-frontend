@@ -49,7 +49,10 @@ export default function MaterialRequests() {
   const allCompanyOptions = useOptions("/api/admin/companies", (c) => `${c.code} - ${c.name}`);
   const allBranchOptions = useOptions("/api/admin/branches", (b) => `${b.code} - ${b.name}`);
   const warehouseOptions = useOptions("/api/admin/warehouses", (w) => `${w.code} - ${w.name}`);
-  const itemOptions = useOptions("/api/inventory/items", (i) => `${i.code} - ${i.name}`);
+  // Only items flagged "Purchase" on their product record show up here -
+  // that flag now actually means something (see inventory.routes.ts's
+  // listFilters + crudFactory's boolean coercion).
+  const itemOptions = useOptions("/api/inventory/items", (i) => `${i.code} - ${i.name}`, "forPurchase=true");
   const uomOptions = useOptions("/api/masters/uoms", (u) => `${u.code} - ${u.name}`);
   const uomLabelById = Object.fromEntries(uomOptions.map((o) => [o.value, o.label.split(" - ")[0]]));
 

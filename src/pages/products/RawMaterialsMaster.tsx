@@ -8,6 +8,7 @@ export default function RawMaterialsMaster() {
       itemTypes={["Stock", "Semi-finished", "Finished"]}
       defaultItemType="Stock"
       seriesEntityType="RawMaterial"
+      screen="rawMaterial"
     />
   );
 }

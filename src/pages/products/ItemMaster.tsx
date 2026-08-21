@@ -8,6 +8,7 @@ export default function ItemMaster() {
       itemTypes={["Non-stock", "Stationary", "Packaging", "Service", "Spare"]}
       defaultItemType="Non-stock"
       seriesEntityType="Item"
+      screen="item"
     />
   );
 }

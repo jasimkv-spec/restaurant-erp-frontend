@@ -8,6 +8,7 @@ export default function MenuMaster() {
       itemTypes={["Sellable", "Menu"]}
       defaultItemType="Sellable"
       seriesEntityType="MenuItem"
+      screen="menu"
     />
   );
 }

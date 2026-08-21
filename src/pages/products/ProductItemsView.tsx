@@ -1,6 +1,8 @@
-import { CrudTable } from "../../components/CrudTable";
+import { useEffect, useState } from "react";
+import { CrudTable, type CrudFormField } from "../../components/CrudTable";
 import { useOptions } from "../../lib/useOptions";
 import { useCodeLock } from "../../lib/useCodeLock";
+import { api, type ListResponse } from "../../lib/apiClient";
 import { ItemGlMappingPanel } from "../../components/ItemGlMappingPanel";
 import { ItemPricesPanel } from "../../components/ItemPricesPanel";
 import { ItemVendorPanel } from "../../components/ItemVendorPanel";
@@ -18,6 +20,8 @@ function showsRecipePanel(form: Record<string, any>) {
 
 const COSTING_METHODS = ["Weighted Average", "Standard Cost", "FIFO"];
 
+type ScreenKind = "rawMaterial" | "menu" | "item";
+
 /**
  * Shared implementation behind Raw Materials Master, Menu Master, and Item
  * Master - all three are the same underlying Item table (see
@@ -26,6 +30,10 @@ const COSTING_METHODS = ["Weighted Average", "Standard Cost", "FIFO"];
  * product only ever shows up in exactly one of the three lists, and
  * everything downstream (recipes, GRN, stock, sales) still points at the
  * same Item record either way - nothing needed to change there.
+ *
+ * Each screen only shows the fields actually relevant to it (a Menu item
+ * doesn't need a reorder level; a Raw Material doesn't need prep time) -
+ * see the `screen` prop and the extraFields split below.
  */
 export function ProductItemsView({
   title,
@@ -33,6 +41,7 @@ export function ProductItemsView({
   itemTypes,
   defaultItemType,
   seriesEntityType,
+  screen,
 }: {
   title: string;
   description: string;
@@ -40,6 +49,8 @@ export function ProductItemsView({
   defaultItemType: string;
   /** "RawMaterial" | "MenuItem" | "Item" - matches inventory.routes.ts's ITEM_AUTO_CODE_SERIES, and the Master Series entry that governs this screen's code field. */
   seriesEntityType: string;
+  /** Which set of extra fields to show below the shared core - see the three arrays below. */
+  screen: ScreenKind;
 }) {
   const { locked: codeLocked, prefix: codePrefix } = useCodeLock(seriesEntityType);
   const categoryOptions = useOptions("/api/inventory/item-categories", (c) => `${c.code} - ${c.name}`);
@@ -49,6 +60,103 @@ export function ProductItemsView({
   const brandOptions = useOptions("/api/inventory/brands", (b) => `${b.code} - ${b.name}`);
   const uomOptions = useOptions("/api/masters/uoms", (u) => `${u.code} - ${u.name}`);
   const taxOptions = useOptions("/api/masters/taxes", (t) => `${t.code} - ${t.name}`);
+  const itemTypeOptions = useOptions("/api/inventory/item-types", (t) => `${t.code} - ${t.name}`);
+
+  // Raw Materials Master pre-selects the seeded "Stock" Item Type row for
+  // every new record ("by default all raw materials will be stock items") -
+  // needs the real id, not just the {value,label} pair useOptions gives, so
+  // fetched separately and only for this one screen.
+  const [defaultStockItemTypeId, setDefaultStockItemTypeId] = useState<string | undefined>(undefined);
+  useEffect(() => {
+    if (screen !== "rawMaterial") return;
+    let cancelled = false;
+    api.get<ListResponse<any>>("/api/inventory/item-types?pageSize=200").then((res) => {
+      if (cancelled) return;
+      const stock = res.data.find((t) => t.code === "STOCK");
+      if (stock) setDefaultStockItemTypeId(stock.id);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [screen]);
+
+  const coreFields: CrudFormField[] = [
+    {
+      key: "code",
+      label: "Code",
+      type: "text",
+      disabled: codeLocked,
+      placeholder: codeLocked
+        ? `Auto-generated (${codePrefix ?? "..."}####)`
+        : "Enter a code, or configure it under Master Series to auto-generate",
+    },
+    { key: "name", label: "Name", type: "text", required: true },
+    { key: "forSales", label: "Sales", type: "checkbox" },
+    { key: "forManufacture", label: "Manufacture", type: "checkbox" },
+    { key: "forFactory", label: "Factory", type: "checkbox" },
+    { key: "forPurchase", label: "Purchase", type: "checkbox" },
+    { key: "forPos", label: "Point of Sale", type: "checkbox" },
+    { key: "forExpense", label: "Expenses", type: "checkbox" },
+    { key: "shortName", label: "Short name (for receipts/kitchen tickets)", type: "text" },
+    { key: "barcode", label: "Barcode", type: "text" },
+    { key: "itemType", label: "Item type", type: "select", required: true, options: itemTypes.map((t) => ({ value: t, label: t })) },
+    {
+      key: "itemTypeId",
+      label: "Item Type (Stock/Non-Stock/Service/...)",
+      type: "select",
+      options: itemTypeOptions,
+    },
+    { key: "categoryId", label: "Category", type: "select", options: categoryOptions },
+    { key: "groupId", label: "Product group", type: "select", options: groupOptions },
+    { key: "subgroupId", label: "Product subgroup", type: "select", options: subgroupOptions },
+    { key: "familyId", label: "Product family", type: "select", options: familyOptions },
+    { key: "brandId", label: "Brand", type: "select", options: brandOptions },
+    { key: "baseUomId", label: "Base UOM", type: "select", required: true, options: uomOptions },
+    { key: "defaultTaxId", label: "Default tax", type: "select", options: taxOptions },
+    { key: "costingMethod", label: "Costing method", type: "select", options: COSTING_METHODS.map((c) => ({ value: c, label: c })) },
+    { key: "standardCost", label: "Standard cost", type: "number" },
+    { key: "imageUrl", label: "Image URL", type: "text" },
+    { key: "notes", label: "Notes", type: "text" },
+  ];
+
+  // Only what's relevant to purchasing/stocking a physical ingredient -
+  // a Menu item is a recipe/sellable, not something you reorder directly.
+  const rawMaterialFields: CrudFormField[] = [
+    { key: "purchaseUomId", label: "Purchase UOM (if different from base)", type: "select", options: uomOptions },
+    { key: "batchRequired", label: "Batch tracking required", type: "checkbox" },
+    { key: "expiryRequired", label: "Expiry tracking required", type: "checkbox" },
+    { key: "shelfLifeDays", label: "Shelf life (days)", type: "number" },
+    { key: "reorderLevel", label: "Reorder level", type: "number" },
+    { key: "minStock", label: "Minimum stock", type: "number" },
+    { key: "maxStock", label: "Maximum stock", type: "number" },
+  ];
+
+  // Only what's relevant to selling a dish - no reorder/batch/purchase UOM,
+  // since a Menu item isn't purchased or stocked directly (its ingredients
+  // are, via the Recipe panel below).
+  const menuFields: CrudFormField[] = [
+    { key: "salesUomId", label: "Sales UOM (if different from base)", type: "select", options: uomOptions },
+    { key: "preparationTimeMinutes", label: "Prep time (minutes)", type: "number" },
+    { key: "allergens", label: "Allergens", type: "text", placeholder: "e.g. Gluten, Nuts, Dairy" },
+  ];
+
+  // Everything else - packaging/stationery/spares/services. Still often
+  // physically stocked (packaging, spares), so keeps reorder/purchase UOM;
+  // Serialized is an Item Master-only concept (equipment/assets with
+  // individual serial numbers tracked on purchase/sale).
+  const itemFields: CrudFormField[] = [
+    { key: "purchaseUomId", label: "Purchase UOM (if different from base)", type: "select", options: uomOptions },
+    { key: "reorderLevel", label: "Reorder level", type: "number" },
+    { key: "minStock", label: "Minimum stock", type: "number" },
+    { key: "maxStock", label: "Maximum stock", type: "number" },
+    {
+      key: "isSerialized",
+      label: "Serialized (track individual serial numbers on purchase/sale)",
+      type: "checkbox",
+    },
+  ];
+
+  const extraFields = screen === "rawMaterial" ? rawMaterialFields : screen === "menu" ? menuFields : itemFields;
 
   return (
     <CrudTable
@@ -56,56 +164,19 @@ export function ProductItemsView({
       description={description}
       basePath="/api/inventory/items"
       extraQuery={`itemType=${itemTypes.join(",")}`}
-      createDefaults={{ itemType: defaultItemType }}
+      createDefaults={{
+        itemType: defaultItemType,
+        ...(screen === "rawMaterial" && defaultStockItemTypeId ? { itemTypeId: defaultStockItemTypeId } : {}),
+      }}
       columns={[
         { key: "code", label: "Code" },
         { key: "name", label: "Name" },
         { key: "itemType", label: "Type" },
+        { key: "itemTypeMaster", label: "Item Type", render: (row: any) => row.itemTypeMaster?.name },
         { key: "baseUom", label: "UOM", render: (row: any) => row.baseUom?.code },
         { key: "status", label: "Status" },
       ]}
-      formFields={[
-        {
-          key: "code",
-          label: "Code",
-          type: "text",
-          disabled: codeLocked,
-          placeholder: codeLocked
-            ? `Auto-generated (${codePrefix ?? "..."}####)`
-            : "Enter a code, or configure it under Master Series to auto-generate",
-        },
-        { key: "name", label: "Name", type: "text", required: true },
-        { key: "forSales", label: "Sales", type: "checkbox" },
-        { key: "forManufacture", label: "Manufacture", type: "checkbox" },
-        { key: "forFactory", label: "Factory", type: "checkbox" },
-        { key: "forPurchase", label: "Purchase", type: "checkbox" },
-        { key: "forPos", label: "Point of Sale", type: "checkbox" },
-        { key: "forExpense", label: "Expenses", type: "checkbox" },
-        { key: "shortName", label: "Short name (for receipts/kitchen tickets)", type: "text" },
-        { key: "barcode", label: "Barcode", type: "text" },
-        { key: "itemType", label: "Item type", type: "select", required: true, options: itemTypes.map((t) => ({ value: t, label: t })) },
-        { key: "categoryId", label: "Category", type: "select", options: categoryOptions },
-        { key: "groupId", label: "Product group", type: "select", options: groupOptions },
-        { key: "subgroupId", label: "Product subgroup", type: "select", options: subgroupOptions },
-        { key: "familyId", label: "Product family", type: "select", options: familyOptions },
-        { key: "brandId", label: "Brand", type: "select", options: brandOptions },
-        { key: "baseUomId", label: "Base UOM", type: "select", required: true, options: uomOptions },
-        { key: "purchaseUomId", label: "Purchase UOM (if different from base)", type: "select", options: uomOptions },
-        { key: "salesUomId", label: "Sales UOM (if different from base)", type: "select", options: uomOptions },
-        { key: "defaultTaxId", label: "Default tax", type: "select", options: taxOptions },
-        { key: "costingMethod", label: "Costing method", type: "select", options: COSTING_METHODS.map((c) => ({ value: c, label: c })) },
-        { key: "standardCost", label: "Standard cost", type: "number" },
-        { key: "batchRequired", label: "Batch tracking required", type: "checkbox" },
-        { key: "expiryRequired", label: "Expiry tracking required", type: "checkbox" },
-        { key: "shelfLifeDays", label: "Shelf life (days)", type: "number" },
-        { key: "reorderLevel", label: "Reorder level", type: "number" },
-        { key: "minStock", label: "Minimum stock", type: "number" },
-        { key: "maxStock", label: "Maximum stock", type: "number" },
-        { key: "preparationTimeMinutes", label: "Prep time (minutes)", type: "number" },
-        { key: "allergens", label: "Allergens", type: "text", placeholder: "e.g. Gluten, Nuts, Dairy" },
-        { key: "imageUrl", label: "Image URL", type: "text" },
-        { key: "notes", label: "Notes", type: "text" },
-      ]}
+      formFields={[...coreFields, ...extraFields]}
       extraPanel={({ editingId, form }) => (
         <>
           <ItemPricesPanel itemId={editingId} />

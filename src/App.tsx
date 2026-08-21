@@ -37,6 +37,7 @@ import ProductSubgroups from "./pages/products/ProductSubgroups";
 import ProductFamilies from "./pages/products/ProductFamilies";
 import Brands from "./pages/products/Brands";
 import PriceGroups from "./pages/products/PriceGroups";
+import ItemTypes from "./pages/products/ItemTypes";
 import Users from "./pages/security/Users";
 import Roles from "./pages/security/Roles";
 
@@ -104,6 +105,7 @@ export default function App() {
           <Route path="/products/product-families" element={<RequireAuth><ProductFamilies /></RequireAuth>} />
           <Route path="/products/brands" element={<RequireAuth><Brands /></RequireAuth>} />
           <Route path="/products/price-groups" element={<RequireAuth><PriceGroups /></RequireAuth>} />
+          <Route path="/products/item-types" element={<RequireAuth><ItemTypes /></RequireAuth>} />
 
           <Route path="/security/users" element={<RequireAuth><Users /></RequireAuth>} />
           <Route path="/security/roles" element={<RequireAuth><Roles /></RequireAuth>} />
