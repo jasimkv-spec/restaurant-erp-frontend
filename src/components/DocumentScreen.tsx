@@ -2,6 +2,7 @@ import { Fragment, useEffect, useState } from "react";
 import { ArrowLeft, Check, FileSpreadsheet, Pencil, Plus, Printer, Trash2 } from "lucide-react";
 import { api, ApiError, type ListResponse } from "../lib/apiClient";
 import { FIELD_CLASS } from "./CrudTable";
+import { SearchableSelect } from "./SearchableSelect";
 import { DocumentAttachments } from "./DocumentAttachments";
 import { ListFilterBar } from "./ListFilterBar";
 import { matchesRowFilters, exportRowsToExcel, type ListFilterConfig, type DateRangeFilterConfig } from "../lib/listFilters";
@@ -283,6 +284,17 @@ export function DocumentScreen({
    * leave a stray blank line at the top).
    */
   linesExtra?: (ctx: { header: Record<string, any>; lines: Record<string, any>[]; addLines: (rows: Record<string, any>[]) => void }) => any;
+  /**
+   * Renders a totals block (e.g. "PO Amount / Discount / Tax / Total incl.
+   * VAT") directly under the Line Items grid, in both the create/edit form
+   * (fed the live, still-editable `lines`/`header` state - so figures update
+   * as the user types) and the detail view (fed the saved record's own
+   * `lines` and header fields, plus `savedTotal` - the exact,
+   * server-computed totalAmount, preferred over any client-side
+   * recalculation since it's the number of record). Omit for a document
+   * type that doesn't need a totals summary.
+   */
+  summary?: (ctx: { header: Record<string, any>; lines: Record<string, any>[]; savedTotal?: number }) => any;
 }) {
   const [view, setView] = useState<"list" | "form" | "detail">("list");
   const [rows, setRows] = useState<any[]>([]);
@@ -637,19 +649,13 @@ export function DocumentScreen({
     if (f.type === "select") {
       const opts = rowOptions ?? f.options ?? [];
       return (
-        <select
-          className={`${COMPACT_FIELD_CLASS} ${disabledCls} ${compactCls}`}
+        <SearchableSelect
+          options={opts}
           value={row[f.key] ?? ""}
+          onChange={onChange}
           disabled={f.disabled}
-          onChange={(e) => onChange(e.target.value)}
-        >
-          <option value="">Select...</option>
-          {opts.map((o) => (
-            <option key={o.value} value={o.value}>
-              {o.label}
-            </option>
-          ))}
-        </select>
+          className={`${COMPACT_FIELD_CLASS} ${disabledCls} ${compactCls}`}
+        />
       );
     }
     if (f.type === "textarea") {
@@ -918,6 +924,8 @@ export function DocumentScreen({
             </div>
           </div>
 
+          {summary?.({ header, lines })}
+
           <div className="flex justify-end gap-2">
             <button onClick={backToList} className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50">
               Cancel
@@ -1132,6 +1140,8 @@ export function DocumentScreen({
                   </table>
                 </div>
               </div>
+
+              {summary?.({ header: detail, lines: detail.lines ?? [], savedTotal: detail.totalAmount != null ? Number(detail.totalAmount) : undefined })}
 
               {attachmentsModuleCode && <DocumentAttachments moduleCode={attachmentsModuleCode} recordId={detail.id} />}
             </>

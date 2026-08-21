@@ -273,6 +273,54 @@ export default function PurchaseOrders() {
     return (net * rate) / 100;
   }
 
+  // Full totals - unlike lineNet/lineTaxPreview above (deliberately simple,
+  // per-line-only previews for the grid's own Tax Amt/Line Total columns),
+  // this mirrors poCalc.ts's complete order of operations including the
+  // header discount's proration across every line, so the summary panel's
+  // numbers actually match what the server will (or already did) compute.
+  function computePoTotals(rows: Record<string, any>[], header: Record<string, any>) {
+    const grossByLine = rows.map((r) => {
+      const isFoc = r.isFocLine === "true" || r.isFocLine === true;
+      return isFoc ? 0 : (Number(r.qty) || 0) * (Number(r.unitPrice) || 0);
+    });
+    const grossTotal = grossByLine.reduce((sum, g) => sum + g, 0);
+
+    const netByLine = rows.map((r, i) => {
+      const discAmt = r.discountAmount !== "" && r.discountAmount != null
+        ? Number(r.discountAmount)
+        : r.discountPct
+          ? (grossByLine[i] * Number(r.discountPct)) / 100
+          : 0;
+      return Math.max(0, grossByLine[i] - discAmt);
+    });
+    const subtotal = netByLine.reduce((sum, n) => sum + n, 0);
+
+    const headerDiscAmt = header.discountAmount !== "" && header.discountAmount != null
+      ? Number(header.discountAmount)
+      : header.discountPct
+        ? (subtotal * Number(header.discountPct)) / 100
+        : 0;
+
+    let taxTotal = 0;
+    let grandTotal = 0;
+    rows.forEach((r, i) => {
+      const net = netByLine[i];
+      const headerShare = subtotal > 0 ? (net / subtotal) * headerDiscAmt : 0;
+      const taxable = Math.max(0, net - headerShare);
+      const rate = r.taxId ? taxRateById[r.taxId] ?? 0 : 0;
+      const taxAmt = header.taxMode === "Exempt" ? 0 : (taxable * rate) / 100;
+      taxTotal += taxAmt;
+      grandTotal += taxable + taxAmt;
+    });
+
+    return {
+      grossTotal,
+      discountTotal: grossTotal - subtotal + headerDiscAmt,
+      taxTotal,
+      grandTotal,
+    };
+  }
+
   const scopedCompanyId = activeCompanyScope && activeCompanyScope !== "GLOBAL" ? activeCompanyScope : null;
   const myCompanies = user?.companies;
   const companyOptions = myCompanies && myCompanies.length > 0
@@ -426,6 +474,32 @@ export default function PurchaseOrders() {
         focQty: "",
         taxId: "",
         instructions: "",
+      }}
+      summary={({ header, lines, savedTotal }) => {
+        const { grossTotal, discountTotal, taxTotal, grandTotal } = computePoTotals(lines, header);
+        const total = savedTotal ?? grandTotal;
+        return (
+          <div className="mb-5 flex justify-end">
+            <div className="w-full space-y-1.5 rounded-xl border border-gray-200 bg-white p-4 text-sm shadow-sm sm:w-80">
+              <div className="flex justify-between">
+                <span className="text-gray-500">PO Amount</span>
+                <span className="font-semibold text-navy-900">{grossTotal.toFixed(2)}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-gray-500">Discount</span>
+                <span className="font-semibold text-red-600">{discountTotal > 0 ? `-${discountTotal.toFixed(2)}` : "0.00"}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-gray-500">Tax (VAT)</span>
+                <span className="font-semibold text-navy-900">{taxTotal.toFixed(2)}</span>
+              </div>
+              <div className="flex justify-between border-t border-gray-200 pt-1.5 text-base">
+                <span className="font-bold text-navy-900">Total (incl. VAT)</span>
+                <span className="font-bold text-brand-700">{total.toFixed(2)}</span>
+              </div>
+            </div>
+          </div>
+        );
       }}
       lifecycle={[
         { fromStatus: "Draft", action: "submit", label: "Submit for Approval" },

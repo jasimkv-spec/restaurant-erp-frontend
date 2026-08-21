@@ -6,6 +6,7 @@ import { useAuth } from "../../context/AuthContext";
 import { useOptions } from "../../lib/useOptions";
 import { FIELD_CLASS, LABEL_CLASS } from "../../components/CrudTable";
 import { StatusBadge } from "../../components/DocumentScreen";
+import { SearchableSelect } from "../../components/SearchableSelect";
 import { ListFilterBar } from "../../components/ListFilterBar";
 import { matchesRowFilters, exportRowsToExcel, type ListFilterConfig } from "../../lib/listFilters";
 
@@ -436,14 +437,12 @@ function NewRfqView({
             <div key={i} className="grid grid-cols-[1fr_7rem_10rem_2.5rem] items-end gap-2 py-2">
               <div>
                 <label className={LABEL_CLASS}>Item</label>
-                <select className={FIELD_CLASS} value={line.itemId} onChange={(e) => updateLine(i, { itemId: e.target.value })}>
-                  <option value="">Select...</option>
-                  {itemOptions.map((o) => (
-                    <option key={o.value} value={o.value}>
-                      {o.label}
-                    </option>
-                  ))}
-                </select>
+                <SearchableSelect
+                  options={itemOptions}
+                  value={line.itemId}
+                  onChange={(value) => updateLine(i, { itemId: value })}
+                  className={FIELD_CLASS}
+                />
               </div>
               <div>
                 <label className={LABEL_CLASS}>Qty</label>
@@ -798,14 +797,7 @@ function ExcelQuotePanel({
         </button>
         <div className="w-56">
           <label className={LABEL_CLASS}>Vendor this file is from</label>
-          <select className={FIELD_CLASS} value={vendorId} onChange={(e) => setVendorId(e.target.value)}>
-            <option value="">Select...</option>
-            {vendorOptions.map((o) => (
-              <option key={o.value} value={o.value}>
-                {o.label}
-              </option>
-            ))}
-          </select>
+          <SearchableSelect options={vendorOptions} value={vendorId} onChange={setVendorId} className={FIELD_CLASS} />
         </div>
         <button
           onClick={() => fileInputRef.current?.click()}
@@ -912,14 +904,7 @@ function RfqLinePanel({
         <div className="grid grid-cols-[1fr_7rem_7rem_6rem] items-end gap-2">
           <div>
             <label className={LABEL_CLASS}>Vendor</label>
-            <select className={FIELD_CLASS} value={vendorId} onChange={(e) => setVendorId(e.target.value)}>
-              <option value="">Select...</option>
-              {vendorOptions.map((o) => (
-                <option key={o.value} value={o.value}>
-                  {o.label}
-                </option>
-              ))}
-            </select>
+            <SearchableSelect options={vendorOptions} value={vendorId} onChange={setVendorId} className={FIELD_CLASS} />
           </div>
           <div>
             <label className={LABEL_CLASS}>Price</label>
