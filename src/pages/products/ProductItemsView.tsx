@@ -100,10 +100,6 @@ export function ProductItemsView({
     { key: "shortName", label: "Short name (for receipts/kitchen tickets)", type: "text" },
     { key: "barcode", label: "Barcode", type: "text" },
     { key: "itemType", label: "Material stage", type: "select", required: true, options: itemTypes.map((t) => ({ value: t, label: t })) },
-    { key: "categoryId", label: "Category", type: "select", options: categoryOptions },
-    { key: "groupId", label: "Product group", type: "select", options: groupOptions },
-    { key: "subgroupId", label: "Product subgroup", type: "select", options: subgroupOptions },
-    { key: "familyId", label: "Product family", type: "select", options: familyOptions },
     { key: "brandId", label: "Brand", type: "select", options: brandOptions },
     { key: "baseUomId", label: "Base UOM", type: "select", required: true, options: uomOptions },
     { key: "defaultTaxId", label: "Default tax", type: "select", options: taxOptions },
@@ -112,6 +108,28 @@ export function ProductItemsView({
     { key: "imageUrl", label: "Image URL", type: "text" },
     { key: "notes", label: "Notes", type: "text" },
   ];
+
+  // Menu items don't need an accounting Category - their revenue posts via
+  // Sales Channel, not Item Category's Inventory/COGS GL defaults - so it's
+  // dropped here rather than shown but meaningless. What a menu genuinely
+  // needs is a merchandising hierarchy (Rice > White Rice > Biriyani, Juice
+  // > Orange), which is exactly what Group/Subgroup/Family already is
+  // (no GL attached) - just relabeled here so its job on this screen is
+  // obvious. Raw Material and Item Master keep the generic labels plus
+  // Category, since GL mapping genuinely applies to what they stock.
+  const classificationFields: CrudFormField[] =
+    screen === "menu"
+      ? [
+          { key: "groupId", label: "Menu category", type: "select", options: groupOptions },
+          { key: "subgroupId", label: "Sub-category", type: "select", options: subgroupOptions },
+          { key: "familyId", label: "Dish type", type: "select", options: familyOptions },
+        ]
+      : [
+          { key: "categoryId", label: "Category", type: "select", options: categoryOptions },
+          { key: "groupId", label: "Product group", type: "select", options: groupOptions },
+          { key: "subgroupId", label: "Product subgroup", type: "select", options: subgroupOptions },
+          { key: "familyId", label: "Product family", type: "select", options: familyOptions },
+        ];
 
   // Only what's relevant to purchasing/stocking a physical ingredient -
   // a Menu item is a recipe/sellable, not something you reorder directly.
@@ -177,7 +195,7 @@ export function ProductItemsView({
         { key: "baseUom", label: "UOM", render: (row: any) => row.baseUom?.code },
         { key: "status", label: "Status" },
       ]}
-      formFields={[...coreFields, ...extraFields]}
+      formFields={[...coreFields, ...classificationFields, ...extraFields]}
       extraPanel={({ editingId, form }) => (
         <>
           <ItemPricesPanel itemId={editingId} />
