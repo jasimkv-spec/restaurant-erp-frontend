@@ -126,6 +126,7 @@ const NAV: NavGroup[] = [
     items: [
       { label: "Vendors", path: "/procurement/vendors", icon: Handshake },
       { label: "Material Requests", path: "/procurement/material-requests", icon: ClipboardList },
+      { label: "MR Consolidation", path: "/procurement/mr-consolidation", icon: Boxes },
     ],
   },
   {

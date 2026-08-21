@@ -26,6 +26,7 @@ import PaymentTerms from "./pages/masters/PaymentTerms";
 import PaymentMethods from "./pages/masters/PaymentMethods";
 import Vendors from "./pages/procurement/Vendors";
 import MaterialRequests from "./pages/procurement/MaterialRequests";
+import MrConsolidation from "./pages/procurement/MrConsolidation";
 import Customers from "./pages/sales/Customers";
 import DocumentTypes from "./pages/workflow/DocumentTypes";
 import RawMaterialsMaster from "./pages/products/RawMaterialsMaster";
@@ -94,6 +95,7 @@ export default function App() {
 
           <Route path="/procurement/vendors" element={<RequireAuth><Vendors /></RequireAuth>} />
           <Route path="/procurement/material-requests" element={<RequireAuth><MaterialRequests /></RequireAuth>} />
+          <Route path="/procurement/mr-consolidation" element={<RequireAuth><MrConsolidation /></RequireAuth>} />
           <Route path="/sales/customers" element={<RequireAuth><Customers /></RequireAuth>} />
           <Route path="/workflow/document-types" element={<RequireAuth><DocumentTypes /></RequireAuth>} />
 
