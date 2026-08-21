@@ -36,6 +36,8 @@ interface CrudTableProps<T extends Record<string, any>> {
   extraQuery?: string;
   /** Prefills the "Add" form instead of starting blank - e.g. defaulting itemType on a pre-filtered screen. */
   createDefaults?: Record<string, any>;
+  /** Extra controls rendered in the list view's button row, alongside Add/Export/Search - e.g. a one-off "Load starter data" action. */
+  headerExtra?: ReactNode;
 }
 
 function statusPill(status: string) {
@@ -103,6 +105,7 @@ export function CrudTable<T extends Record<string, any>>({
   extraPanel,
   extraQuery,
   createDefaults,
+  headerExtra,
 }: CrudTableProps<T>) {
   const [rows, setRows] = useState<T[]>([]);
   const [loading, setLoading] = useState(true);
@@ -511,6 +514,8 @@ export function CrudTable<T extends Record<string, any>>({
           <Plus size={14} />
           Add {singular}
         </button>
+
+        {headerExtra}
 
         <div className="relative">
           <Search size={14} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
