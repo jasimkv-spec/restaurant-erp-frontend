@@ -45,8 +45,15 @@ export interface DocFieldConfig {
   options?: { value: string; label: string }[];
   /** Per-row options for a "select" lineField, e.g. scoped to the item picked on that row. Takes priority over options when present. */
   optionsForRow?: (row: Record<string, any>) => { value: string; label: string }[];
-  /** For type "readonly" - a display-only derived value (e.g. an item's base UOM), never sent back to the server. */
-  computed?: (row: Record<string, any>) => string;
+  /**
+   * For type "readonly" - a display-only derived value (e.g. an item's base
+   * UOM), never sent back to the server. The optional second argument gives
+   * the full line set and the header, for values that depend on more than
+   * just this one row - e.g. this line's share of a header-level discount,
+   * which depends on every other line's value too. Callers that only need
+   * the row itself can ignore it.
+   */
+  computed?: (row: Record<string, any>, ctx?: { rows: Record<string, any>[]; header: Record<string, any> }) => string;
   required?: boolean;
   placeholder?: string;
   /** Greys the field out and blocks input - e.g. a branch that's auto-selected because the user only has access to one. */
@@ -244,6 +251,7 @@ export function DocumentScreen({
   dateRangeFilter,
   linesExtra,
   summary,
+  printSummaryRows,
 }: {
   title: string;
   description: string;
@@ -296,6 +304,18 @@ export function DocumentScreen({
    * type that doesn't need a totals summary.
    */
   summary?: (ctx: { header: Record<string, any>; lines: Record<string, any>[]; savedTotal?: number }) => any;
+  /**
+   * Plain label/value rows (e.g. PO Amount / Discount / Tax / Total incl.
+   * VAT) rendered as a right-aligned totals box under the line items table
+   * on the printed document - given the full fetched record (not the
+   * live form state, since printing only ever happens from a saved
+   * detail/list row). Set `emphasize` on the grand-total row to bold it
+   * and draw a rule above it. Returns plain strings rather than JSX
+   * because the print output is a raw HTML string in a separate window,
+   * not part of this component's own React tree. Omit for a document type
+   * that doesn't need a totals summary on its printout.
+   */
+  printSummaryRows?: (record: any) => { label: string; value: string; emphasize?: boolean }[];
 }) {
   const [view, setView] = useState<"list" | "form" | "detail">("list");
   const [rows, setRows] = useState<any[]>([]);
@@ -561,6 +581,37 @@ export function DocumentScreen({
     const recHasBaseQty = (record.lines ?? []).some((l: any) => l.baseQty != null);
     const recHasNumericLine = lineFields.some((f) => f.type === "number");
     const recDocNo = record.mrNo ?? record.poNo ?? record.grnNo ?? record.transferNo ?? record.adjustmentNo ?? record.id;
+    const company = record.branch?.company;
+
+    const escapeHtml = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+
+    // Letterhead - logo on the left (a data URL, so it just embeds, no
+    // network fetch needed even for a standalone print window), company
+    // identity block on the right. Falls back to a plain title-only header
+    // if this branch's company has no logo/details filled in yet, so a
+    // fresh tenant's printouts still work before Setup > Companies is done.
+    const companyDetailLines = company
+      ? [
+          company.legalName || company.name,
+          company.address,
+          [company.taxNo ? `Tax No: ${company.taxNo}` : null, company.registrationNumber ? `Reg No: ${company.registrationNumber}` : null]
+            .filter(Boolean)
+            .join("  |  "),
+          company.contactNumber,
+        ].filter(Boolean)
+      : [];
+    const letterhead = company
+      ? `<table style="width:100%;margin-bottom:14px;"><tbody><tr>
+          <td style="width:72px;vertical-align:top;">
+            ${company.logoUrl ? `<img src="${company.logoUrl}" alt="" style="max-width:64px;max-height:64px;object-fit:contain;" />` : ""}
+          </td>
+          <td style="vertical-align:top;text-align:right;">
+            ${companyDetailLines.map((l, i) => `<div style="${i === 0 ? "font-size:15px;font-weight:700;color:#111;" : "font-size:11px;color:#666;"}">${escapeHtml(String(l))}</div>`).join("")}
+          </td>
+        </tr></tbody></table>
+        <div style="border-top:2px solid #1d4ed8;margin-bottom:14px;"></div>`
+      : "";
+
     const sections = groupBySection(headerFields);
     const sectionPanels = sections
       .map((group, i) => {
@@ -590,7 +641,11 @@ export function DocumentScreen({
         const cells = [
           String(i + 1),
           ...lineFields.map((f) =>
-            f.type === "readonly" ? f.computed?.(line) ?? "-" : f.type === "select" ? resolveDisplayValue(f, line) : String(line[f.key] ?? "-")
+            f.type === "readonly"
+              ? f.computed?.(line, { rows: record.lines ?? [], header: record }) ?? "-"
+              : f.type === "select"
+                ? resolveDisplayValue(f, line)
+                : String(line[f.key] ?? "-")
           ),
           ...(recHasBaseQty ? [line.baseQty != null ? `${line.baseQty} ${line.item?.baseUom?.code ?? ""}` : "-"] : []),
         ];
@@ -602,23 +657,67 @@ export function DocumentScreen({
           .map((c) => `<td style="padding:6px 10px;border:1px solid #ddd;font-weight:700;">${c}</td>`)
           .join("")}</tr>`
       : "";
+
+    // Summary box (PO Amount / Discount / Tax / Total, or whatever the
+    // caller's document type needs) - plain label/value pairs rather than
+    // JSX since this whole document is a raw HTML string in a separate
+    // window, not part of the React tree. Omitted entirely for a document
+    // type that doesn't pass printSummaryRows.
+    const summaryRows = printSummaryRows?.(record) ?? [];
+    const summaryBox = summaryRows.length
+      ? `<table style="width:280px;margin-left:auto;margin-top:10px;font-size:12px;">
+          <tbody>
+            ${summaryRows
+              .map(
+                (r) =>
+                  `<tr${r.emphasize ? ' style="border-top:1.5px solid #333;"' : ""}>
+                    <td style="padding:4px 8px;color:${r.emphasize ? "#111" : "#666"};font-weight:${r.emphasize ? "700" : "400"};">${r.label}</td>
+                    <td style="padding:4px 8px;text-align:right;font-weight:${r.emphasize ? "700" : "600"};${r.emphasize ? "font-size:13px;color:#1d4ed8;" : ""}">${r.value}</td>
+                  </tr>`
+              )
+              .join("")}
+          </tbody>
+        </table>`
+      : "";
+
     const metaBits = [
       record.title,
       `Status: ${record.status}`,
       record.requester ? `Created by ${record.requester.displayName}` : null,
       record.approvedBy ? `Approved by ${record.approvedBy.displayName}${record.approvedAt ? ` on ${new Date(record.approvedAt).toLocaleString()}` : ""}` : null,
     ].filter(Boolean);
+
+    const headerNote = company?.transactionHeaderText
+      ? `<div style="margin-bottom:12px;padding:8px 10px;background:#f9fafb;border:1px solid #eee;border-radius:6px;font-size:11px;color:#555;white-space:pre-wrap;">${escapeHtml(company.transactionHeaderText)}</div>`
+      : "";
+    const footerNote = company?.transactionFooterText
+      ? `<div style="margin-top:28px;padding-top:10px;border-top:1px solid #ddd;font-size:11px;color:#555;white-space:pre-wrap;">${escapeHtml(company.transactionFooterText)}</div>`
+      : "";
+
     win.document.write(`
       <html>
         <head>
           <title>${recDocNo}</title>
-          <style>body{font-family:Arial,Helvetica,sans-serif;padding:24px;color:#111;} table{border-collapse:collapse;} h1{margin-bottom:2px;} .meta{color:#666;font-size:12px;margin-bottom:14px;} .lines{width:100%;font-size:12px;margin-top:18px;}</style>
+          <style>
+            @page { margin: 18mm 14mm; }
+            body { font-family: Arial, Helvetica, sans-serif; padding: 0; color: #111; }
+            table { border-collapse: collapse; }
+            h1 { margin: 0 0 2px; font-size: 19px; }
+            .meta { color: #666; font-size: 12px; margin-bottom: 14px; }
+            .lines { width: 100%; font-size: 12px; margin-top: 18px; }
+            .printed-on { margin-top: 24px; font-size: 10px; color: #999; text-align: right; }
+          </style>
         </head>
         <body>
-          <h1>${title} - ${recDocNo}</h1>
+          ${letterhead}
+          <h1>${title.replace(/s$/, "")} - ${recDocNo}</h1>
           <div class="meta">${metaBits.join(" &middot; ")}</div>
+          ${headerNote}
           <table style="width:100%;"><tbody><tr>${sectionPanels}</tr></tbody></table>
           <table class="lines"><thead><tr>${lineHeaderCells}</tr></thead><tbody>${lineBodyRows}${totalsRow}</tbody></table>
+          ${summaryBox}
+          ${footerNote}
+          <div class="printed-on">Printed on ${new Date().toLocaleString()}</div>
         </body>
       </html>
     `);
@@ -641,9 +740,15 @@ export function DocumentScreen({
     }
   }
 
-  function renderFieldInput(f: DocFieldConfig, row: Record<string, any>, onChange: (value: any) => void, rowOptions?: { value: string; label: string }[]) {
+  function renderFieldInput(
+    f: DocFieldConfig,
+    row: Record<string, any>,
+    onChange: (value: any) => void,
+    rowOptions?: { value: string; label: string }[],
+    computedCtx?: { rows: Record<string, any>[]; header: Record<string, any> }
+  ) {
     if (f.type === "readonly") {
-      return <div className="px-1 py-2 text-sm text-gray-500">{f.computed?.(row) ?? "-"}</div>;
+      return <div className="px-1 py-2 text-sm text-gray-500">{f.computed?.(row, computedCtx) ?? "-"}</div>;
     }
     const disabledCls = f.disabled ? "bg-gray-100 text-gray-500" : "";
     const compactCls = f.compact ? "max-w-[110px]" : "";
@@ -885,7 +990,7 @@ export function DocumentScreen({
                         <td className="border-b border-gray-100 px-2 py-1.5 text-xs text-gray-400">{i + 1}</td>
                         {lineFields.map((f) => (
                           <td key={f.key} style={{ minWidth: lineColMinWidth(f) }} className="border-b border-l border-gray-100 px-2 py-1.5">
-                            {renderFieldInput(f, line, (value) => setLineValue(i, f.key, value), f.optionsForRow?.(line))}
+                            {renderFieldInput(f, line, (value) => setLineValue(i, f.key, value), f.optionsForRow?.(line), { rows: lines, header })}
                           </td>
                         ))}
                         <td className="border-b border-l border-gray-100 px-2 py-1.5">
@@ -1109,7 +1214,7 @@ export function DocumentScreen({
                           {lineFields.map((f) => (
                             <td key={f.key} style={{ minWidth: lineColMinWidth(f) }} className="border-b border-l border-gray-100 px-2 py-1.5 text-navy-900">
                               {f.type === "readonly"
-                                ? f.computed?.(line) ?? "-"
+                                ? f.computed?.(line, { rows: detail.lines ?? [], header: detail }) ?? "-"
                                 : f.type === "select"
                                   ? resolveDisplayValue(f, line)
                                   : String(line[f.key] ?? "-")}

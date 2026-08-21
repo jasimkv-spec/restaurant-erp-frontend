@@ -273,6 +273,26 @@ export default function PurchaseOrders() {
     return (net * rate) / 100;
   }
 
+  // This line's proportional share of the header-level discount (allocated
+  // by its share of the pre-header-discount subtotal) - the figure the user
+  // asked to see at line level so it can feed GRN/ledger costing later.
+  // Mirrors poCalc.ts's own math exactly, using the live rows/header passed
+  // in via DocFieldConfig.computed's context so it's accurate while still
+  // editing, not just after the PO is saved. Falls back to the persisted
+  // headerDiscountShare (from the server) if no live context is given.
+  function lineHeaderDiscountShare(row: Record<string, any>, ctx?: { rows: Record<string, any>[]; header: Record<string, any> }): number {
+    if (!ctx) return Number(row.headerDiscountShare) || 0;
+    const { rows, header } = ctx;
+    const subtotal = rows.reduce((sum, r) => sum + lineNet(r), 0);
+    const headerDiscAmt = header.discountAmount !== "" && header.discountAmount != null
+      ? Number(header.discountAmount)
+      : header.discountPct
+        ? (subtotal * Number(header.discountPct)) / 100
+        : 0;
+    const net = lineNet(row);
+    return subtotal > 0 ? (net / subtotal) * headerDiscAmt : 0;
+  }
+
   // Full totals - unlike lineNet/lineTaxPreview above (deliberately simple,
   // per-line-only previews for the grid's own Tax Amt/Line Total columns),
   // this mirrors poCalc.ts's complete order of operations including the
@@ -450,6 +470,12 @@ export default function PurchaseOrders() {
         { key: "focQty", label: "FOC Qty", type: "number", compact: true },
         { key: "taxId", label: "Tax", type: "select", options: taxOptions },
         {
+          key: "headerDiscountShareDisplay",
+          label: "Header Disc. Share",
+          type: "readonly",
+          computed: (row, ctx) => lineHeaderDiscountShare(row, ctx).toFixed(2),
+        },
+        {
           key: "taxAmountDisplay",
           label: "Tax Amt (est.)",
           type: "readonly",
@@ -500,6 +526,17 @@ export default function PurchaseOrders() {
             </div>
           </div>
         );
+      }}
+      printSummaryRows={(record) => {
+        const { grossTotal, discountTotal, taxTotal } = computePoTotals(record.lines ?? [], record);
+        const total = record.totalAmount != null ? Number(record.totalAmount) : grossTotal - discountTotal + taxTotal;
+        const ccy = record.currency?.code ? ` ${record.currency.code}` : "";
+        return [
+          { label: "PO Amount", value: `${grossTotal.toFixed(2)}${ccy}` },
+          { label: "Discount", value: discountTotal > 0 ? `-${discountTotal.toFixed(2)}${ccy}` : `0.00${ccy}` },
+          { label: "Tax (VAT)", value: `${taxTotal.toFixed(2)}${ccy}` },
+          { label: "Total (incl. VAT)", value: `${total.toFixed(2)}${ccy}`, emphasize: true },
+        ];
       }}
       lifecycle={[
         { fromStatus: "Draft", action: "submit", label: "Submit for Approval" },
