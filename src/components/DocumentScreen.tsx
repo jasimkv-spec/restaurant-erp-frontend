@@ -243,6 +243,7 @@ export function DocumentScreen({
   searchPlaceholder,
   dateRangeFilter,
   linesExtra,
+  summary,
 }: {
   title: string;
   description: string;
