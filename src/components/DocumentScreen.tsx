@@ -202,6 +202,7 @@ export function DocumentScreen({
   searchAccessor,
   searchPlaceholder,
   dateRangeFilter,
+  linesExtra,
 }: {
   title: string;
   description: string;
@@ -218,8 +219,8 @@ export function DocumentScreen({
   deletableStatuses?: string[];
   /** Fires after any line field changes, with the row's latest values - lets the caller react (e.g. fetch that item's packing-unit options when itemId changes). editingId is the id of the document currently being edited (null when creating new) - useful for a duplicate/lookup check the caller wants to exclude this same document from. */
   onLineFieldChange?: (index: number, key: string, value: any, row: Record<string, any>, editingId: string | null) => void;
-  /** Fires after any header field changes, with the header's latest values - lets the caller track things like "which branch is currently selected" for use inside onLineFieldChange (e.g. an available-stock lookup needs both the line's itemId and the header's branchId, but the two live in separate state owned by this component). */
-  onHeaderFieldChange?: (key: string, value: any, header: Record<string, any>) => void;
+  /** Fires after any header field changes, with the header's latest values - lets the caller track things like "which branch is currently selected" for use inside onLineFieldChange (e.g. an available-stock lookup needs both the line's itemId and the header's branchId, but the two live in separate state owned by this component). May optionally return a partial object of other header fields to auto-set at the same time (e.g. picking a vendor auto-fills its default currency/payment terms) - ignored when called from the edit-seeding pass, where the record's own saved values already take precedence. */
+  onHeaderFieldChange?: (key: string, value: any, header: Record<string, any>) => void | Record<string, any>;
   /** Passed straight to DocumentAttachments as moduleCode - opts this document into the same upload/download/delete panel Vendors/Customers use. Omit to leave attachments off for a screen that doesn't need them. */
   attachmentsModuleCode?: string;
   /** Ordered list of statuses that make up the normal happy-path (e.g. ["Draft","Submitted","Approved"]) - renders as a progress stepper in the detail view. Side-branch statuses like Rejected/Cancelled just fall back to the plain badge. */
@@ -233,6 +234,16 @@ export function DocumentScreen({
   searchPlaceholder?: string;
   /** Adds a From/To date range filter against this document's own transaction date (e.g. requestDate, poDate). */
   dateRangeFilter?: DateRangeFilterConfig;
+  /**
+   * Renders extra UI just above the Line Items grid in the create/edit form
+   * only (e.g. a "Pull from Approved MR" picker panel for Purchase Orders) -
+   * given the current header values (so the caller can scope its own lookup,
+   * e.g. by branch) and an addLines() helper that appends one or more rows
+   * to the line grid in one go (replacing the single still-empty starter row
+   * if that's all that's there, so bulk-adding into a fresh form doesn't
+   * leave a stray blank line at the top).
+   */
+  linesExtra?: (ctx: { header: Record<string, any>; lines: Record<string, any>[]; addLines: (rows: Record<string, any>[]) => void }) => any;
 }) {
   const [view, setView] = useState<"list" | "form" | "detail">("list");
   const [rows, setRows] = useState<any[]>([]);
@@ -345,13 +356,22 @@ export function DocumentScreen({
   function setHeaderValue(key: string, value: any) {
     setHeader((prev) => {
       const next = { ...prev, [key]: value };
-      onHeaderFieldChange?.(key, value, next);
-      return next;
+      const extra = onHeaderFieldChange?.(key, value, next);
+      return extra ? { ...next, ...extra } : next;
     });
   }
 
   function addLine() {
     setLines((prev) => [...prev, { ...emptyLine }]);
+  }
+
+  /** Bulk-append rows (e.g. from an MR picker) - drops the lone still-empty starter row first so a fresh form doesn't end up with a stray blank line ahead of the picked ones. */
+  function addLines(rows: Record<string, any>[]) {
+    if (rows.length === 0) return;
+    setLines((prev) => {
+      const isBlankStarter = prev.length === 1 && Object.keys(prev[0]).every((k) => !prev[0][k]);
+      return [...(isBlankStarter ? [] : prev), ...rows];
+    });
   }
 
   function removeLine(index: number) {
@@ -780,6 +800,8 @@ export function DocumentScreen({
               );
             })}
           </div>
+
+          {linesExtra?.({ header, lines, addLines })}
 
           <div className="mb-5 rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
             <div className="mb-3 flex items-center justify-between border-b border-gray-100 pb-2">

@@ -12,6 +12,7 @@ import {
   Calendar,
   LayoutGrid,
   Truck,
+  Ship,
   ShoppingCart,
   Wallet,
   ClipboardList,
@@ -98,6 +99,7 @@ const NAV: NavGroup[] = [
       { label: "UOM conversions", path: "/masters/uom-conversions", icon: ArrowLeftRight },
       { label: "Payment terms", path: "/masters/payment-terms", icon: CalendarClock },
       { label: "Payment methods", path: "/masters/payment-methods", icon: CreditCard },
+      { label: "Shipment types", path: "/masters/shipment-types", icon: Ship },
     ],
   },
   {

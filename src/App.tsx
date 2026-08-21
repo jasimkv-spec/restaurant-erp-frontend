@@ -24,6 +24,7 @@ import Uoms from "./pages/masters/Uoms";
 import UomConversions from "./pages/masters/UomConversions";
 import PaymentTerms from "./pages/masters/PaymentTerms";
 import PaymentMethods from "./pages/masters/PaymentMethods";
+import ShipmentTypes from "./pages/masters/ShipmentTypes";
 import Vendors from "./pages/procurement/Vendors";
 import MaterialRequests from "./pages/procurement/MaterialRequests";
 import MrConsolidation from "./pages/procurement/MrConsolidation";
@@ -94,6 +95,7 @@ export default function App() {
           <Route path="/masters/uom-conversions" element={<RequireAuth><UomConversions /></RequireAuth>} />
           <Route path="/masters/payment-terms" element={<RequireAuth><PaymentTerms /></RequireAuth>} />
           <Route path="/masters/payment-methods" element={<RequireAuth><PaymentMethods /></RequireAuth>} />
+          <Route path="/masters/shipment-types" element={<RequireAuth><ShipmentTypes /></RequireAuth>} />
 
           <Route path="/procurement/vendors" element={<RequireAuth><Vendors /></RequireAuth>} />
           <Route path="/procurement/material-requests" element={<RequireAuth><MaterialRequests /></RequireAuth>} />
