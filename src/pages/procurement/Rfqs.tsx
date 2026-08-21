@@ -6,6 +6,8 @@ import { useAuth } from "../../context/AuthContext";
 import { useOptions } from "../../lib/useOptions";
 import { FIELD_CLASS, LABEL_CLASS } from "../../components/CrudTable";
 import { StatusBadge } from "../../components/DocumentScreen";
+import { ListFilterBar } from "../../components/ListFilterBar";
+import { matchesRowFilters, exportRowsToExcel, type ListFilterConfig } from "../../lib/listFilters";
 
 // Column headers used both when generating the blank template and when
 // reading a vendor's completed one back - keeping these as named constants
@@ -25,6 +27,7 @@ interface RfqListRow {
   rfqNo: string;
   rfqDate: string;
   status: string;
+  branchId?: string | null;
   branch?: { code: string; name: string };
   lines: { id: string }[];
 }
@@ -106,6 +109,7 @@ export default function Rfqs() {
           rows={rows}
           loading={loadingList}
           error={error}
+          branchOptions={allBranchOptions}
           onNew={() => {
             setError(null);
             setView("new");
@@ -146,15 +150,75 @@ function ListView({
   rows,
   loading,
   error,
+  branchOptions,
   onNew,
   onOpen,
 }: {
   rows: RfqListRow[];
   loading: boolean;
   error: string | null;
+  branchOptions: { value: string; label: string }[];
   onNew: () => void;
   onOpen: (id: string) => void;
 }) {
+  const [search, setSearch] = useState("");
+  const [filterValues, setFilterValues] = useState<Record<string, string>>({});
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+
+  const filters: ListFilterConfig[] = [
+    { key: "branchId", label: "Branch", type: "select", options: branchOptions, accessor: (r) => r.branchId },
+  ];
+
+  const filteredRows = rows.filter((row) =>
+    matchesRowFilters(row, {
+      search,
+      searchAccessor: (r) => (r.rfqNo ?? "").toLowerCase(),
+      filters,
+      filterValues,
+      dateRangeFilter: { key: "rfqDate", label: "Date" },
+      dateFrom,
+      dateTo,
+    })
+  );
+
+  const allVisibleSelected = filteredRows.length > 0 && filteredRows.every((r) => selectedIds.has(r.id));
+
+  function toggleSelectAll() {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (allVisibleSelected) {
+        for (const r of filteredRows) next.delete(r.id);
+      } else {
+        for (const r of filteredRows) next.add(r.id);
+      }
+      return next;
+    });
+  }
+
+  function toggleSelectOne(id: string) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  const listColumns = [
+    { key: "rfqNo", label: "RFQ No." },
+    { key: "rfqDate", label: "Date", render: (r: RfqListRow) => new Date(r.rfqDate).toLocaleDateString() },
+    { key: "branch", label: "Branch", render: (r: RfqListRow) => (r.branch ? `${r.branch.code} - ${r.branch.name}` : "-") },
+    { key: "lines", label: "Lines", render: (r: RfqListRow) => r.lines?.length ?? 0 },
+    { key: "status", label: "Status" },
+  ];
+
+  function handleExport() {
+    const selectedRows = filteredRows.filter((r) => selectedIds.has(r.id));
+    exportRowsToExcel(listColumns, selectedRows.length > 0 ? selectedRows : filteredRows, "RFQs");
+  }
+
   return (
     <>
       <div className="mb-5 flex items-start justify-between gap-4">
@@ -165,14 +229,45 @@ function ListView({
             convert to a Purchase Order per vendor.
           </p>
         </div>
-        <button
-          onClick={onNew}
-          className="flex shrink-0 items-center gap-1.5 rounded-lg bg-brand-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-brand-700"
-        >
-          <Plus size={16} />
-          New RFQ
-        </button>
+        <div className="flex shrink-0 items-center gap-2">
+          <button
+            onClick={handleExport}
+            disabled={filteredRows.length === 0}
+            title={selectedIds.size > 0 ? "Export selected rows to Excel" : "Export all listed rows to Excel"}
+            className="flex items-center gap-1.5 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-40"
+          >
+            <FileSpreadsheet size={15} />
+            {selectedIds.size > 0 ? `Export selected (${selectedIds.size})` : "Export to Excel"}
+          </button>
+          <button
+            onClick={onNew}
+            className="flex items-center gap-1.5 rounded-lg bg-brand-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-brand-700"
+          >
+            <Plus size={16} />
+            New RFQ
+          </button>
+        </div>
       </div>
+
+      <ListFilterBar
+        search={search}
+        onSearchChange={setSearch}
+        searchPlaceholder="Search RFQ No..."
+        filters={filters}
+        filterValues={filterValues}
+        onFilterChange={(key, value) => setFilterValues((prev) => ({ ...prev, [key]: value }))}
+        dateRangeFilter={{ key: "rfqDate", label: "Date" }}
+        dateFrom={dateFrom}
+        onDateFromChange={setDateFrom}
+        dateTo={dateTo}
+        onDateToChange={setDateTo}
+        onClear={() => {
+          setSearch("");
+          setFilterValues({});
+          setDateFrom("");
+          setDateTo("");
+        }}
+      />
 
       {error && <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div>}
 
@@ -180,6 +275,9 @@ function ListView({
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-gray-100 bg-gray-50">
+              <th className="w-10 px-4 py-2.5">
+                <input type="checkbox" checked={allVisibleSelected} onChange={toggleSelectAll} onClick={(e) => e.stopPropagation()} />
+              </th>
               <th className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-gray-600">RFQ No.</th>
               <th className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-gray-600">Date</th>
               <th className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-gray-600">Branch</th>
@@ -190,17 +288,20 @@ function ListView({
           <tbody className="divide-y divide-gray-100">
             {loading ? (
               <tr>
-                <td colSpan={5} className="px-4 py-6 text-center text-gray-400">Loading...</td>
+                <td colSpan={6} className="px-4 py-6 text-center text-gray-400">Loading...</td>
               </tr>
-            ) : rows.length === 0 ? (
+            ) : filteredRows.length === 0 ? (
               <tr>
-                <td colSpan={5} className="px-4 py-6 text-center text-gray-400">
-                  No RFQs yet - convert an MR Consolidation to RFQ, or click "New RFQ".
+                <td colSpan={6} className="px-4 py-6 text-center text-gray-400">
+                  {rows.length === 0 ? 'No RFQs yet - convert an MR Consolidation to RFQ, or click "New RFQ".' : "No RFQs match these filters."}
                 </td>
               </tr>
             ) : (
-              rows.map((row) => (
+              filteredRows.map((row) => (
                 <tr key={row.id} onClick={() => onOpen(row.id)} className="cursor-pointer transition-colors hover:bg-brand-50">
+                  <td className="px-4 py-2.5" onClick={(e) => e.stopPropagation()}>
+                    <input type="checkbox" checked={selectedIds.has(row.id)} onChange={() => toggleSelectOne(row.id)} />
+                  </td>
                   <td className="px-4 py-2.5 font-medium text-navy-900">{row.rfqNo}</td>
                   <td className="px-4 py-2.5 text-navy-900">{new Date(row.rfqDate).toLocaleDateString()}</td>
                   <td className="px-4 py-2.5 text-navy-900">{row.branch ? `${row.branch.code} - ${row.branch.name}` : "-"}</td>

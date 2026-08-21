@@ -226,6 +226,13 @@ export default function MaterialRequests() {
         checkDuplicate(value, index, editingId);
       }}
       lineWarnings={lineWarnings}
+      searchAccessor={(r) => `${r.mrNo ?? ""} ${r.title ?? ""}`.toLowerCase()}
+      searchPlaceholder="Search MR No. or title..."
+      filters={[
+        { key: "branchId", label: "Branch", type: "select", options: branchOptions, accessor: (r) => r.branchId },
+        { key: "priority", label: "Priority", type: "select", options: PRIORITIES.map((p) => ({ value: p, label: p })), accessor: (r) => r.priority },
+      ]}
+      dateRangeFilter={{ key: "requestDate", label: "Transaction date" }}
       listColumns={[
         { key: "mrNo", label: "MR No." },
         { key: "title", label: "Title" },

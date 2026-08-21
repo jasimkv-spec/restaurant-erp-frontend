@@ -94,6 +94,13 @@ export default function PurchaseOrders() {
         ...(singleBranch ? { branchId: singleBranch.id } : {}),
         ...(scopedCompanyId ? { companyId: scopedCompanyId } : {}),
       }}
+      searchAccessor={(r) => `${r.poNo ?? ""} ${r.vendor?.code ?? ""} ${r.vendor?.name ?? ""}`.toLowerCase()}
+      searchPlaceholder="Search PO No. or vendor..."
+      filters={[
+        { key: "vendorId", label: "Vendor", type: "select", options: vendorOptions, accessor: (r) => r.vendorId },
+        { key: "branchId", label: "Branch", type: "select", options: branchOptions, accessor: (r) => r.branchId },
+      ]}
+      dateRangeFilter={{ key: "poDate", label: "Transaction date" }}
       listColumns={[
         { key: "poNo", label: "PO No." },
         { key: "vendor", label: "Vendor", render: (r) => (r.vendor ? `${r.vendor.code} - ${r.vendor.name}` : "-") },

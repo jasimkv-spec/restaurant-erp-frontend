@@ -1,8 +1,10 @@
 import { Fragment, useEffect, useState } from "react";
-import { ArrowLeft, Check, FileSpreadsheet, FileText, Pencil, Plus, Printer, Trash2 } from "lucide-react";
+import { ArrowLeft, Check, FileSpreadsheet, Pencil, Plus, Printer, Trash2 } from "lucide-react";
 import { api, ApiError, type ListResponse } from "../lib/apiClient";
 import { FIELD_CLASS, LABEL_CLASS } from "./CrudTable";
 import { DocumentAttachments } from "./DocumentAttachments";
+import { ListFilterBar } from "./ListFilterBar";
+import { matchesRowFilters, exportRowsToExcel, type ListFilterConfig, type DateRangeFilterConfig } from "../lib/listFilters";
 
 /**
  * Generic screen for transactional documents (Material Request, Purchase
@@ -179,15 +181,6 @@ function sumNumericField(rows: Record<string, any>[], key: string): number {
   return rows.reduce((sum, r) => sum + (Number(r[key]) || 0), 0);
 }
 
-/** A listColumn's render() often returns a badge component (StatusBadge, PriorityBadge) rather than plain text - for CSV/PDF export that's not usable, so fall back to the row's raw scalar value in that case. */
-function exportText(col: { key: string; render?: (row: any) => any }, row: Record<string, any>): string {
-  const rendered = col.render ? col.render(row) : row[col.key];
-  if (typeof rendered === "string" || typeof rendered === "number") return String(rendered);
-  const raw = row[col.key];
-  if (raw === undefined || raw === null || typeof raw === "object") return "";
-  return String(raw);
-}
-
 export function DocumentScreen({
   title,
   description,
@@ -205,6 +198,10 @@ export function DocumentScreen({
   attachmentsModuleCode,
   statusFlow,
   lineWarnings,
+  filters,
+  searchAccessor,
+  searchPlaceholder,
+  dateRangeFilter,
 }: {
   title: string;
   description: string;
@@ -229,11 +226,29 @@ export function DocumentScreen({
   statusFlow?: string[];
   /** Caller-owned map of line index -> warning message (e.g. "Item already has an open MR for this branch"), rendered as an inline banner row directly under that line in the form view. The caller decides when to populate/clear it, typically from onLineFieldChange - kept generic here so any future document screen can reuse the same duplicate-check/stock-check UX. */
   lineWarnings?: Record<number, string>;
+  /** Per-screen select filters shown above the list - e.g. Vendor on Purchase Orders, Priority on Material Requests. Omit whichever don't apply to this document type. */
+  filters?: ListFilterConfig[];
+  /** Combines whatever fields should be free-text searchable (transaction no., counterparty name/code, title, ...) into one lowercase string per row - e.g. (r) => `${r.poNo} ${r.vendor?.code} ${r.vendor?.name}`. Omit to hide the search box entirely. */
+  searchAccessor?: (row: any) => string;
+  searchPlaceholder?: string;
+  /** Adds a From/To date range filter against this document's own transaction date (e.g. requestDate, poDate). */
+  dateRangeFilter?: DateRangeFilterConfig;
 }) {
   const [view, setView] = useState<"list" | "form" | "detail">("list");
   const [rows, setRows] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  // List search/filter/selection - all client-side over the (up to 200)
+  // rows already fetched by load() below, so filtering never needs its own
+  // round trip. Selection persists across filter changes; exporting always
+  // re-checks selectedIds against whatever's currently in `rows`, so a
+  // stale id from a deleted record just quietly drops out.
+  const [search, setSearch] = useState("");
+  const [filterValues, setFilterValues] = useState<Record<string, string>>({});
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
   const [editingId, setEditingId] = useState<string | null>(null);
   const [header, setHeader] = useState<Record<string, any>>(createDefaults ?? {});
@@ -417,48 +432,46 @@ export function DocumentScreen({
     }
   }
 
-  function exportCsv() {
-    const headerLine = listColumns.map((c) => `"${c.label.replace(/"/g, '""')}"`).join(",");
-    const dataLines = rows.map((row) => listColumns.map((c) => `"${exportText(c, row).replace(/"/g, '""')}"`).join(","));
-    const csv = [headerLine, ...dataLines].join("\r\n");
-    const blob = new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8;" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `${title.replace(/\s+/g, "-").toLowerCase()}.csv`;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    URL.revokeObjectURL(url);
+  const filteredRows = rows.filter((row) =>
+    matchesRowFilters(row, { search, searchAccessor, filters, filterValues, dateRangeFilter, dateFrom, dateTo })
+  );
+
+  const allVisibleSelected = filteredRows.length > 0 && filteredRows.every((r) => selectedIds.has(r.id));
+
+  function toggleSelectAll() {
+    setSelectedIds((prev) => {
+      if (allVisibleSelected) {
+        const next = new Set(prev);
+        for (const r of filteredRows) next.delete(r.id);
+        return next;
+      }
+      const next = new Set(prev);
+      for (const r of filteredRows) next.add(r.id);
+      return next;
+    });
   }
 
-  function exportListPdf() {
-    const win = window.open("", "_blank");
-    if (!win) return;
-    const headerCells = listColumns
-      .map((c) => `<th style="padding:6px 10px;border:1px solid #ddd;background:#f3f4f6;text-align:left;">${c.label}</th>`)
-      .join("");
-    const bodyRows = rows
-      .map(
-        (row) =>
-          `<tr>${listColumns.map((c) => `<td style="padding:6px 10px;border:1px solid #ddd;">${exportText(c, row) || "-"}</td>`).join("")}</tr>`
-      )
-      .join("");
-    win.document.write(`
-      <html>
-        <head>
-          <title>${title}</title>
-          <style>body{font-family:Arial,Helvetica,sans-serif;padding:24px;} table{border-collapse:collapse;width:100%;font-size:12px;} h2{margin-bottom:4px;}</style>
-        </head>
-        <body>
-          <h2>${title}</h2>
-          <table><thead><tr>${headerCells}</tr></thead><tbody>${bodyRows}</tbody></table>
-        </body>
-      </html>
-    `);
-    win.document.close();
-    win.focus();
-    win.print();
+  function toggleSelectOne(id: string) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  function clearFilters() {
+    setSearch("");
+    setFilterValues({});
+    setDateFrom("");
+    setDateTo("");
+  }
+
+  // Exports whatever's selected; with nothing selected, exports every
+  // currently-filtered row instead (so the button is never a dead end).
+  function handleExport() {
+    const selectedRows = filteredRows.filter((r) => selectedIds.has(r.id));
+    exportRowsToExcel(listColumns, selectedRows.length > 0 ? selectedRows : filteredRows, title);
   }
 
   // Hex approximations of SECTION_PALETTE, since the print window is a
@@ -620,22 +633,13 @@ export function DocumentScreen({
             </div>
             <div className="flex shrink-0 items-center gap-2">
               <button
-                onClick={exportCsv}
-                disabled={rows.length === 0}
-                title="Export Excel"
+                onClick={handleExport}
+                disabled={filteredRows.length === 0}
+                title={selectedIds.size > 0 ? "Export selected rows to Excel" : "Export all listed rows to Excel"}
                 className="flex items-center gap-1.5 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-40"
               >
                 <FileSpreadsheet size={15} />
-                Excel
-              </button>
-              <button
-                onClick={exportListPdf}
-                disabled={rows.length === 0}
-                title="Export PDF"
-                className="flex items-center gap-1.5 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-40"
-              >
-                <FileText size={15} />
-                PDF
+                {selectedIds.size > 0 ? `Export selected (${selectedIds.size})` : "Export to Excel"}
               </button>
               <button
                 onClick={openCreate}
@@ -647,6 +651,21 @@ export function DocumentScreen({
             </div>
           </div>
 
+          <ListFilterBar
+            search={search}
+            onSearchChange={searchAccessor ? setSearch : undefined}
+            searchPlaceholder={searchPlaceholder}
+            filters={filters}
+            filterValues={filterValues}
+            onFilterChange={(key, value) => setFilterValues((prev) => ({ ...prev, [key]: value }))}
+            dateRangeFilter={dateRangeFilter}
+            dateFrom={dateFrom}
+            onDateFromChange={setDateFrom}
+            dateTo={dateTo}
+            onDateToChange={setDateTo}
+            onClear={clearFilters}
+          />
+
           {error && (
             <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div>
           )}
@@ -655,6 +674,14 @@ export function DocumentScreen({
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-gray-100 bg-gray-50">
+                  <th className="w-10 px-4 py-2.5">
+                    <input
+                      type="checkbox"
+                      checked={allVisibleSelected}
+                      onChange={toggleSelectAll}
+                      onClick={(e) => e.stopPropagation()}
+                    />
+                  </th>
                   {listColumns.map((c) => (
                     <th key={c.key} className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-gray-600">
                       {c.label}
@@ -666,23 +693,26 @@ export function DocumentScreen({
               <tbody className="divide-y divide-gray-100">
                 {loading ? (
                   <tr>
-                    <td colSpan={listColumns.length + 1} className="px-4 py-6 text-center text-gray-400">
+                    <td colSpan={listColumns.length + 2} className="px-4 py-6 text-center text-gray-400">
                       Loading...
                     </td>
                   </tr>
-                ) : rows.length === 0 ? (
+                ) : filteredRows.length === 0 ? (
                   <tr>
-                    <td colSpan={listColumns.length + 1} className="px-4 py-6 text-center text-gray-400">
-                      No records yet.
+                    <td colSpan={listColumns.length + 2} className="px-4 py-6 text-center text-gray-400">
+                      {rows.length === 0 ? "No records yet." : "No records match these filters."}
                     </td>
                   </tr>
                 ) : (
-                  rows.map((row) => (
+                  filteredRows.map((row) => (
                     <tr
                       key={row.id}
                       onClick={() => openDetail(row.id)}
                       className="cursor-pointer transition-colors hover:bg-brand-50"
                     >
+                      <td className="px-4 py-2.5" onClick={(e) => e.stopPropagation()}>
+                        <input type="checkbox" checked={selectedIds.has(row.id)} onChange={() => toggleSelectOne(row.id)} />
+                      </td>
                       {listColumns.map((c) => (
                         <td key={c.key} className="px-4 py-2.5 text-navy-900">
                           {c.render ? c.render(row) : c.key === "status" ? <StatusBadge status={row.status} /> : String(row[c.key] ?? "-")}
