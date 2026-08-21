@@ -99,10 +99,10 @@ export function ProductItemsView({
     { key: "forExpense", label: "Expenses", type: "checkbox" },
     { key: "shortName", label: "Short name (for receipts/kitchen tickets)", type: "text" },
     { key: "barcode", label: "Barcode", type: "text" },
-    { key: "itemType", label: "Item type", type: "select", required: true, options: itemTypes.map((t) => ({ value: t, label: t })) },
+    { key: "itemType", label: "Material stage", type: "select", required: true, options: itemTypes.map((t) => ({ value: t, label: t })) },
     {
       key: "itemTypeId",
-      label: "Item Type (Stock/Non-Stock/Service/...)",
+      label: "Item Type",
       type: "select",
       options: itemTypeOptions,
     },
@@ -171,7 +171,7 @@ export function ProductItemsView({
       columns={[
         { key: "code", label: "Code" },
         { key: "name", label: "Name" },
-        { key: "itemType", label: "Type" },
+        { key: "itemType", label: "Material stage" },
         { key: "itemTypeMaster", label: "Item Type", render: (row: any) => row.itemTypeMaster?.name },
         { key: "baseUom", label: "UOM", render: (row: any) => row.baseUom?.code },
         { key: "status", label: "Status" },
