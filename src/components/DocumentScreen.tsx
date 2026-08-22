@@ -86,6 +86,19 @@ export interface LifecycleStep {
   label: string;
   /** Optional extra confirm text shown before firing. */
   confirmMessage?: string;
+  /**
+   * Called when the action's first attempt fails with a 409 Conflict whose
+   * body carries `details` - e.g. "posting this GRN would leave its PO
+   * partially received, decide what to do about it". Given that `details`
+   * object (and the open record), return the extra fields to merge into the
+   * request body for a single retry (e.g. `{ poDisposition: "close" }"), or
+   * `null`/`undefined` to abandon the action quietly (the user backed out of
+   * whatever the conflict was asking). Only one retry is attempted - a
+   * second 409 surfaces as a normal error. Lets a specific document screen
+   * own the decision (its own confirm/prompt copy) without DocumentScreen
+   * itself knowing anything about what the conflict means.
+   */
+  onConflict?: (details: any, detail: any) => Promise<Record<string, any> | null | undefined>;
 }
 
 /**
@@ -621,7 +634,26 @@ export function DocumentScreen({
     setError(null);
     const id = detail.id;
     try {
-      await api.post<any>(`${basePath}/${id}/${step.action}`, {});
+      try {
+        await api.post<any>(`${basePath}/${id}/${step.action}`, {});
+      } catch (err) {
+        // A 409 with a step-specific onConflict handler means the server
+        // needs a decision before it can proceed (e.g. "this GRN only
+        // partially receives its PO - keep it open or close it now?").
+        // Ask via the handler, then retry once with its answer folded into
+        // the body. Anything else (no handler, or a second 409) falls
+        // through to the normal error path below.
+        if (err instanceof ApiError && err.status === 409 && step.onConflict) {
+          const extra = await step.onConflict(err.details, detail);
+          if (!extra) {
+            setActionBusy(null);
+            return;
+          }
+          await api.post<any>(`${basePath}/${id}/${step.action}`, extra);
+        } else {
+          throw err;
+        }
+      }
       // Re-fetch via GET /:id rather than trusting the action route's own
       // response body - some lifecycle routes (submit especially) return a
       // bare record without the relations the GET endpoint includes, which

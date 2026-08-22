@@ -584,6 +584,19 @@ export default function Grns() {
           action: "post",
           label: "Post GRN",
           confirmMessage: "Post this GRN? This updates stock and books the accrual - it cannot be undone.",
+          // Fired when the backend reports this GRN would leave its linked
+          // PO partially received (409 with requiresPoDecision) - asks the
+          // user whether to keep the PO open for the remaining items or
+          // close it early, then retries the post with that choice.
+          onConflict: async (details) => {
+            if (!details?.requiresPoDecision) return null;
+            const closeNow = window.confirm(
+              `This GRN doesn't fully receive Purchase Order ${details.poNo ?? ""}.\n\n` +
+                `Click OK to CLOSE the PO now (no further deliveries expected).\n` +
+                `Click Cancel to KEEP the PO open (Partially Received) so more GRNs can be raised against it later.`
+            );
+            return { poDisposition: closeNow ? "close" : "keep-open" };
+          },
         },
       ]}
       statusFlow={["Draft", "Posted"]}
