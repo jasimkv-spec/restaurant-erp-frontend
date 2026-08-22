@@ -133,6 +133,8 @@ const NAV: NavGroup[] = [
       { label: "RFQs", path: "/procurement/rfqs", icon: FileText },
       { label: "Purchase Orders", path: "/procurement/purchase-orders", icon: ShoppingCart },
       { label: "Goods Receipt (GRN)", path: "/procurement/grns", icon: PackageCheck },
+      { label: "Purchase Invoices", path: "/procurement/purchase-invoices", icon: FileText },
+      { label: "Additional Cost Types", path: "/procurement/additional-cost-types", icon: Tags },
     ],
   },
   {

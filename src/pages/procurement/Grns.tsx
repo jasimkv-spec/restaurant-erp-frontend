@@ -9,6 +9,125 @@ interface ItemIndexEntry {
   baseUomCode: string;
 }
 
+interface AdditionalCostRow {
+  costTypeId: string;
+  amount: number | "";
+  remark: string;
+}
+
+/**
+ * Freight/Insurance/Handling lines added to this GRN's own amount - saved
+ * separately from the goods lines (GrnAdditionalCost, not GrnLine), so a
+ * cost-only GRN (no items, just a freight invoice) is possible too. Stored
+ * as a hidden "additionalCosts" header field (see DocumentScreen's `hidden`
+ * flag) since DocumentScreen's own line grid is shaped for item rows, not
+ * this - the value here is a plain array, passed straight through to the
+ * save payload untouched.
+ *
+ * Kept as its own local rows[] state (rather than writing straight into the
+ * header on every keystroke) so a row can sit half-filled while the user is
+ * still typing - only rows with both a cost type AND a positive amount are
+ * ever synced up into header.additionalCosts, which is what actually gets
+ * saved.
+ */
+function AdditionalCostsPanel({
+  header,
+  setHeaderFields,
+  costTypeOptions,
+}: {
+  header: Record<string, any>;
+  setHeaderFields: (patch: Record<string, any>) => void;
+  costTypeOptions: { value: string; label: string }[];
+}) {
+  const [rows, setRows] = useState<AdditionalCostRow[]>(
+    header.additionalCosts?.length ? header.additionalCosts : []
+  );
+
+  useEffect(() => {
+    const valid = rows
+      .filter((r) => r.costTypeId && Number(r.amount) > 0)
+      .map((r) => ({ costTypeId: r.costTypeId, amount: Number(r.amount), remark: r.remark || undefined }));
+    setHeaderFields({ additionalCosts: valid });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rows]);
+
+  function update(index: number, patch: Partial<AdditionalCostRow>) {
+    setRows((prev) => prev.map((r, i) => (i === index ? { ...r, ...patch } : r)));
+  }
+  function addRow() {
+    setRows((prev) => [...prev, { costTypeId: "", amount: "", remark: "" }]);
+  }
+  function removeRow(index: number) {
+    setRows((prev) => prev.filter((_, i) => i !== index));
+  }
+
+  const total = rows.reduce((s, r) => s + (Number(r.amount) || 0), 0);
+
+  return (
+    <div className="mb-5 rounded-xl border border-amber-100 bg-amber-50/40 p-4 shadow-sm">
+      <div className="mb-2 flex items-center justify-between">
+        <div className="text-[11px] font-semibold uppercase tracking-wide text-amber-700">
+          Additional Costs (Transportation, Insurance, Handling, ...)
+        </div>
+        <button
+          type="button"
+          onClick={addRow}
+          className="rounded-md border border-amber-300 bg-white px-2 py-1 text-[11px] font-semibold text-amber-700 hover:bg-amber-100"
+        >
+          + Add cost
+        </button>
+      </div>
+      {rows.length === 0 ? (
+        <p className="text-[11px] text-gray-500">
+          None yet - add freight, insurance, or handling costs here to include them in this GRN's own amount.
+        </p>
+      ) : (
+        <div className="space-y-2">
+          {rows.map((row, i) => (
+            <div key={i} className="flex items-center gap-2">
+              <select
+                value={row.costTypeId}
+                onChange={(e) => update(i, { costTypeId: e.target.value })}
+                className="w-52 rounded-lg border border-amber-200 bg-white px-2 py-1.5 text-sm focus:border-amber-400 focus:outline-none"
+              >
+                <option value="">Select cost type...</option>
+                {costTypeOptions.map((o) => (
+                  <option key={o.value} value={o.value}>
+                    {o.label}
+                  </option>
+                ))}
+              </select>
+              <input
+                type="number"
+                value={row.amount}
+                onChange={(e) => update(i, { amount: e.target.value === "" ? "" : Number(e.target.value) })}
+                placeholder="Amount"
+                className="w-28 rounded-lg border border-amber-200 bg-white px-2 py-1.5 text-sm focus:border-amber-400 focus:outline-none"
+              />
+              <input
+                type="text"
+                value={row.remark}
+                onChange={(e) => update(i, { remark: e.target.value })}
+                placeholder="Remark (optional)"
+                className="flex-1 rounded-lg border border-amber-200 bg-white px-2 py-1.5 text-sm focus:border-amber-400 focus:outline-none"
+              />
+              <button
+                type="button"
+                onClick={() => removeRow(i)}
+                className="px-1 text-sm text-red-500 hover:text-red-700"
+                aria-label="Remove cost line"
+              >
+                ✕
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+      {total > 0 && <p className="mt-2 text-[11px] font-medium text-amber-700">Additional costs total: {total.toFixed(2)}</p>}
+    </div>
+  );
+}
+
 interface AvailablePo {
   id: string;
   poNo: string;
@@ -159,6 +278,7 @@ export default function Grns() {
   const allWarehouseOptions = useOptions("/api/admin/warehouses", (w) => `${w.code} - ${w.name}`);
   const vendorOptions = useOptions("/api/procurement/vendors", (v) => `${v.code} - ${v.name}`);
   const itemOptions = useOptions("/api/inventory/items", (i) => `${i.code} - ${i.name}`, "forPurchase=true");
+  const costTypeOptions = useOptions("/api/procurement/additional-cost-types", (t) => `${t.code} - ${t.name}`);
 
   const [itemsIndex, setItemsIndex] = useState<Record<string, ItemIndexEntry>>({});
   const [warehouseBranchById, setWarehouseBranchById] = useState<Record<string, string>>({});
@@ -202,6 +322,7 @@ export default function Grns() {
       basePath="/api/procurement/grns"
       createDefaults={{
         grnDate: today,
+        additionalCosts: [],
         ...(singleBranch ? { branchId: singleBranch.id, warehouseId: singleBranch.defaultWarehouseId ?? "" } : {}),
         ...(scopedCompanyId ? { companyId: scopedCompanyId } : {}),
       }}
@@ -264,9 +385,15 @@ export default function Grns() {
         // carries the link through to the saved payload without its own
         // form input (see DocFieldConfig.hidden).
         { key: "poId", label: "Purchase Order", type: "text", hidden: true },
+        // Set by the Additional Costs panel below - a plain array, carried
+        // straight through to the saved payload (see DocFieldConfig.hidden).
+        { key: "additionalCosts", label: "Additional Costs", type: "text", hidden: true },
       ]}
       linesExtra={({ header, addLines, setHeaderFields }) => (
-        <PoPoolPanel header={header} addLines={addLines} setHeaderFields={setHeaderFields} />
+        <>
+          <PoPoolPanel header={header} addLines={addLines} setHeaderFields={setHeaderFields} />
+          <AdditionalCostsPanel header={header} setHeaderFields={setHeaderFields} costTypeOptions={costTypeOptions} />
+        </>
       )}
       lineFields={[
         { key: "itemId", label: "Item", type: "select", required: true, options: itemOptions },
@@ -285,7 +412,14 @@ export default function Grns() {
         itemId: "",
         receivedQty: "",
         acceptedQty: "",
-        rejectedQty: "0",
+        // Must be "" (not "0") - DocumentScreen's addLines() only treats this
+        // starter row as replaceable when every field is falsy/blank; a
+        // non-empty "0" string made it look "filled in", so recalling a PO
+        // appended its lines after this row instead of replacing it, leaving
+        // a stray empty line. The backend already defaults rejectedQty to 0
+        // when it's omitted (see grnLineSchema), so an empty string here has
+        // no effect on what actually gets saved.
+        rejectedQty: "",
         batchNo: "",
         expiryDate: "",
         unitCost: "",

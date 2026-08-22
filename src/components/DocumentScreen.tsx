@@ -282,6 +282,7 @@ export function DocumentScreen({
   createDefaults,
   editableStatuses = ["Draft"],
   deletableStatuses = ["Draft"],
+  statusField = "status",
   onLineFieldChange,
   onHeaderFieldChange,
   attachmentsModuleCode,
@@ -309,6 +310,8 @@ export function DocumentScreen({
   editableStatuses?: string[];
   /** Statuses that still allow deleting the document outright. Default: Draft only. */
   deletableStatuses?: string[];
+  /** The record's own status column, when it isn't named "status" - e.g. PurchaseInvoice/GoodsReturn/VendorPayment all use "postingStatus". Drives the list badge, detail badge, stepper, and editable/deletable/lifecycle checks. Default: "status". */
+  statusField?: string;
   /** Fires after any line field changes, with the row's latest values - lets the caller react (e.g. fetch that item's packing-unit options when itemId changes). editingId is the id of the document currently being edited (null when creating new) - useful for a duplicate/lookup check the caller wants to exclude this same document from. */
   onLineFieldChange?: (index: number, key: string, value: any, row: Record<string, any>, editingId: string | null) => void;
   /** Fires after any header field changes, with the header's latest values - lets the caller track things like "which branch is currently selected" for use inside onLineFieldChange (e.g. an available-stock lookup needs both the line's itemId and the header's branchId, but the two live in separate state owned by this component). May optionally return a partial object of other header fields to auto-set at the same time (e.g. picking a vendor auto-fills its default currency/payment terms) - ignored when called from the edit-seeding pass, where the record's own saved values already take precedence. */
@@ -749,7 +752,7 @@ export function DocumentScreen({
 
     const metaBits = [
       record.title,
-      `Status: ${record.status}`,
+      `Status: ${record[statusField]}`,
       record.requester ? `Created by ${record.requester.displayName}` : null,
       record.approvedBy ? `Approved by ${record.approvedBy.displayName}${record.approvedAt ? ` on ${new Date(record.approvedAt).toLocaleString()}` : ""}` : null,
     ].filter(Boolean);
@@ -969,7 +972,7 @@ export function DocumentScreen({
                       </td>
                       {listColumns.map((c) => (
                         <td key={c.key} className="px-4 py-2.5 text-navy-900">
-                          {c.render ? c.render(row) : c.key === "status" ? <StatusBadge status={row.status} /> : String(row[c.key] ?? "-")}
+                          {c.render ? c.render(row) : c.key === statusField ? <StatusBadge status={row[statusField]} /> : String(row[c.key] ?? "-")}
                         </td>
                       ))}
                       <td className="px-4 py-2.5 text-right">
@@ -1149,11 +1152,11 @@ export function DocumentScreen({
                 <div className="flex items-center gap-3">
                   <h1 className="text-xl font-bold text-navy-900">{docNo}</h1>
                   {detail.title && <span className="text-sm text-gray-500">- {detail.title}</span>}
-                  <StatusBadge status={detail.status} />
+                  <StatusBadge status={detail[statusField]} />
                 </div>
                 <div className="flex gap-2">
                   {lifecycle
-                    .filter((step) => step.fromStatus === detail.status)
+                    .filter((step) => step.fromStatus === detail[statusField])
                     .map((step) => (
                       <button
                         key={step.action}
@@ -1171,7 +1174,7 @@ export function DocumentScreen({
                     <Printer size={14} />
                     Print
                   </button>
-                  {editableStatuses.includes(detail.status) && (
+                  {editableStatuses.includes(detail[statusField]) && (
                     <button
                       onClick={() => openEdit(detail)}
                       className="flex items-center gap-1.5 rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50"
@@ -1180,7 +1183,7 @@ export function DocumentScreen({
                       Edit
                     </button>
                   )}
-                  {deletableStatuses.includes(detail.status) && (
+                  {deletableStatuses.includes(detail[statusField]) && (
                     <button
                       onClick={() => setConfirmingDelete(true)}
                       className="flex items-center gap-1.5 rounded-lg border border-red-200 bg-white px-4 py-2 text-sm font-semibold text-red-600 hover:bg-red-50"
@@ -1192,7 +1195,7 @@ export function DocumentScreen({
                 </div>
               </div>
 
-              {statusFlow && <Stepper steps={statusFlow} current={detail.status} />}
+              {statusFlow && <Stepper steps={statusFlow} current={detail[statusField]} />}
 
               {confirmingDelete && (
                 <div className="mb-5 flex items-center justify-between rounded-lg border border-red-200 bg-red-50 px-4 py-3">

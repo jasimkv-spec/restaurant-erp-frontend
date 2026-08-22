@@ -31,6 +31,8 @@ import MrConsolidation from "./pages/procurement/MrConsolidation";
 import Rfqs from "./pages/procurement/Rfqs";
 import PurchaseOrders from "./pages/procurement/PurchaseOrders";
 import Grns from "./pages/procurement/Grns";
+import AdditionalCostTypes from "./pages/procurement/AdditionalCostTypes";
+import PurchaseInvoices from "./pages/procurement/PurchaseInvoices";
 import Customers from "./pages/sales/Customers";
 import DocumentTypes from "./pages/workflow/DocumentTypes";
 import RawMaterialsMaster from "./pages/products/RawMaterialsMaster";
@@ -105,6 +107,8 @@ export default function App() {
           <Route path="/procurement/rfqs" element={<RequireAuth><Rfqs /></RequireAuth>} />
           <Route path="/procurement/purchase-orders" element={<RequireAuth><PurchaseOrders /></RequireAuth>} />
           <Route path="/procurement/grns" element={<RequireAuth><Grns /></RequireAuth>} />
+          <Route path="/procurement/additional-cost-types" element={<RequireAuth><AdditionalCostTypes /></RequireAuth>} />
+          <Route path="/procurement/purchase-invoices" element={<RequireAuth><PurchaseInvoices /></RequireAuth>} />
           <Route path="/sales/customers" element={<RequireAuth><Customers /></RequireAuth>} />
           <Route path="/workflow/document-types" element={<RequireAuth><DocumentTypes /></RequireAuth>} />
 
