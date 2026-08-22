@@ -10,6 +10,7 @@ const MODULE_CODES = [
   "Rfq",
   "PurchaseOrder",
   "GRN",
+  "PurchaseInvoice",
   "GoodsReturn",
   "VendorDebitNote",
   "VendorPayment",

@@ -317,12 +317,13 @@ export default function PurchaseInvoices() {
       description="Records the vendor's own invoice against one or more Posted GRNs, with the same item/qty/price/tax/discount detail as a Purchase Order. Posting runs a three-way match and books the payable."
       basePath="/api/procurement/purchase-invoices"
       createDefaults={{ invoiceDate: today, invoiceReceivedDate: today, gross: "", tax: "0", additionalCosts: [] }}
-      searchAccessor={(r) => `${r.invoiceNo ?? ""} ${r.vendor?.code ?? ""} ${r.vendor?.name ?? ""}`.toLowerCase()}
+      searchAccessor={(r) => `${r.piNo ?? ""} ${r.invoiceNo ?? ""} ${r.vendor?.code ?? ""} ${r.vendor?.name ?? ""}`.toLowerCase()}
       searchPlaceholder="Search invoice no. or vendor..."
       filters={[{ key: "vendorId", label: "Vendor", type: "select", options: vendorOptions, accessor: (r) => r.vendorId }]}
       dateRangeFilter={{ key: "invoiceDate", label: "Invoice date" }}
       listColumns={[
-        { key: "invoiceNo", label: "Invoice No." },
+        { key: "piNo", label: "PI No." },
+        { key: "invoiceNo", label: "Supplier Invoice No." },
         { key: "vendor", label: "Vendor", render: (r) => (r.vendor ? `${r.vendor.code} - ${r.vendor.name}` : "-") },
         { key: "invoiceDate", label: "Invoice Date", render: (r) => (r.invoiceDate ? new Date(r.invoiceDate).toLocaleDateString() : "-") },
         { key: "gross", label: "Gross", render: (r) => Number(r.gross ?? 0).toFixed(2) },

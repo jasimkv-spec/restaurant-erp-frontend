@@ -731,6 +731,11 @@ export function DocumentScreen({
       record.poNo ??
       record.grnNo ??
       record.rfqNo ??
+      // piNo (this tenant's own internal Purchase Invoice number) takes
+      // priority over invoiceNo (the vendor's own supplier invoice number,
+      // still shown elsewhere on the document) - see PurchaseInvoice.piNo's
+      // doc comment in schema.prisma.
+      record.piNo ??
       record.invoiceNo ??
       record.paymentNo ??
       record.debitNoteNo ??
@@ -966,6 +971,7 @@ export function DocumentScreen({
       detail.poNo ??
       detail.grnNo ??
       detail.rfqNo ??
+      detail.piNo ??
       detail.invoiceNo ??
       detail.paymentNo ??
       detail.debitNoteNo ??
