@@ -54,6 +54,22 @@ interface NavItem {
   icon: typeof Building2;
 }
 
+/**
+ * Each module gets its own accent so the sidebar is scannable at a glance
+ * (which module am I in?) instead of every group/item sharing one uniform
+ * brand-blue highlight regardless of context. Written out as literal,
+ * fully-composed class strings (not built from a `${color}-400` template)
+ * since Tailwind's content scanner only picks up classes it can see
+ * verbatim in the source - a dynamically-interpolated color name would
+ * silently fail to generate its CSS.
+ */
+interface NavColor {
+  icon: string;
+  activeBg: string;
+  activeBorder: string;
+  activeText: string;
+}
+
 interface NavGroup {
   key: string;
   label: string;
@@ -61,7 +77,17 @@ interface NavGroup {
   items: NavItem[];
   /** Groups with no real screens yet are shown collapsed, greyed out, and un-clickable. */
   comingSoon?: boolean;
+  /** Omitted for comingSoon groups, which always render in flat grey regardless. */
+  color?: NavColor;
 }
+
+const SKY: NavColor = { icon: "text-sky-400", activeBg: "bg-sky-500/15", activeBorder: "border-l-sky-400", activeText: "text-sky-300" };
+const VIOLET: NavColor = { icon: "text-violet-400", activeBg: "bg-violet-500/15", activeBorder: "border-l-violet-400", activeText: "text-violet-300" };
+const AMBER: NavColor = { icon: "text-amber-400", activeBg: "bg-amber-500/15", activeBorder: "border-l-amber-400", activeText: "text-amber-300" };
+const EMERALD: NavColor = { icon: "text-emerald-400", activeBg: "bg-emerald-500/15", activeBorder: "border-l-emerald-400", activeText: "text-emerald-300" };
+const ROSE: NavColor = { icon: "text-rose-400", activeBg: "bg-rose-500/15", activeBorder: "border-l-rose-400", activeText: "text-rose-300" };
+const FUCHSIA: NavColor = { icon: "text-fuchsia-400", activeBg: "bg-fuchsia-500/15", activeBorder: "border-l-fuchsia-400", activeText: "text-fuchsia-300" };
+const ORANGE: NavColor = { icon: "text-orange-400", activeBg: "bg-orange-500/15", activeBorder: "border-l-orange-400", activeText: "text-orange-300" };
 
 // Every module from the backend gets a group here, even the ones with no
 // screens built yet - that way the nav shows the real shape of the ERP.
@@ -72,6 +98,7 @@ const NAV: NavGroup[] = [
     key: "setup",
     label: "Setup",
     icon: Settings,
+    color: SKY,
     items: [
       { label: "Companies", path: "/setup/companies", icon: Building2 },
       { label: "Branches", path: "/setup/branches", icon: MapPin },
@@ -88,6 +115,7 @@ const NAV: NavGroup[] = [
     key: "masters",
     label: "General Masters",
     icon: LayoutGrid,
+    color: VIOLET,
     items: [
       { label: "Currencies", path: "/masters/currencies", icon: Coins },
       { label: "Countries", path: "/masters/countries", icon: Globe2 },
@@ -107,6 +135,7 @@ const NAV: NavGroup[] = [
     key: "products",
     label: "Products",
     icon: Package,
+    color: AMBER,
     items: [
       { label: "Raw Materials Master", path: "/products/raw-materials", icon: Wheat },
       { label: "Menu Master", path: "/products/menu", icon: UtensilsCrossed },
@@ -126,6 +155,7 @@ const NAV: NavGroup[] = [
     key: "procurement",
     label: "Procurement",
     icon: Truck,
+    color: EMERALD,
     items: [
       { label: "Vendors", path: "/procurement/vendors", icon: Handshake },
       { label: "Material Requests", path: "/procurement/material-requests", icon: ClipboardList },
@@ -141,6 +171,7 @@ const NAV: NavGroup[] = [
     key: "sales",
     label: "Sales",
     icon: ShoppingCart,
+    color: ROSE,
     items: [{ label: "Customers", path: "/sales/customers", icon: Users }],
   },
   { key: "accounting", label: "Accounting", icon: Wallet, items: [], comingSoon: true },
@@ -148,6 +179,7 @@ const NAV: NavGroup[] = [
     key: "workflow",
     label: "Workflow and approvals",
     icon: ClipboardList,
+    color: FUCHSIA,
     items: [{ label: "Document types", path: "/workflow/document-types", icon: FileText }],
   },
   { key: "reports", label: "Reports", icon: BarChart3, items: [], comingSoon: true },
@@ -155,6 +187,7 @@ const NAV: NavGroup[] = [
     key: "admin",
     label: "Security and admin",
     icon: ShieldCheck,
+    color: ORANGE,
     items: [
       { label: "Users", path: "/security/users", icon: Users },
       { label: "Roles", path: "/security/roles", icon: ShieldCheck },
@@ -195,64 +228,65 @@ export default function Layout({ children }: { children: ReactNode }) {
 
   return (
     <div className="flex min-h-screen bg-gradient-to-br from-brand-50 via-white to-brand-100">
-      <aside className="flex w-56 shrink-0 flex-col bg-navy-800 px-2.5 py-4">
-        <div className="mb-5 flex items-center gap-2 px-2">
-          <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-gradient-to-br from-brand-200 to-brand-600 text-sm font-medium text-navy-900">
+      <aside className="flex w-72 shrink-0 flex-col bg-navy-800 px-3 py-5">
+        <div className="mb-6 flex items-center gap-2.5 px-2">
+          <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-gradient-to-br from-brand-200 to-brand-600 text-base font-medium text-navy-900">
             M
           </div>
           <div>
-            <div className="text-sm font-medium text-white">
+            <div className="text-base font-medium text-white">
               Monetix<span className="text-brand-500">.</span>
             </div>
-            <div className="text-[10px] text-navy-400">Restaurant ERP &middot; {getTenantCode()}</div>
+            <div className="text-xs text-navy-400">Restaurant ERP &middot; {getTenantCode()}</div>
           </div>
         </div>
 
-        <nav className="flex-1 space-y-0.5 overflow-y-auto">
+        <nav className="flex-1 space-y-1 overflow-y-auto">
           {NAV.map((group) => {
             const GroupIcon = group.icon;
             const isOpen = openGroup === group.key;
             return (
-              <div key={group.key} className="mb-0.5">
+              <div key={group.key} className="mb-1">
                 <button
                   type="button"
                   onClick={() => !group.comingSoon && toggleGroup(group.key)}
-                  className={`flex w-full items-center justify-between rounded-lg px-2 py-1.5 text-xs font-semibold transition-colors ${
+                  className={`flex w-full items-center justify-between rounded-lg px-3 py-2.5 text-sm font-semibold transition-colors ${
                     group.comingSoon ? "cursor-default text-navy-400" : "text-white hover:bg-navy-600"
                   }`}
                 >
-                  <span className="flex items-center gap-2">
-                    <GroupIcon size={15} />
+                  <span className="flex items-center gap-2.5">
+                    <GroupIcon size={18} className={group.color ? group.color.icon : undefined} />
                     {group.label}
                   </span>
                   {group.comingSoon ? (
-                    <span className="text-[9px] uppercase tracking-wide text-navy-400">Soon</span>
+                    <span className="text-[10px] uppercase tracking-wide text-navy-400">Soon</span>
                   ) : isOpen ? (
-                    <ChevronDown size={14} className="text-navy-400" />
+                    <ChevronDown size={16} className="text-navy-400" />
                   ) : (
-                    <ChevronRight size={14} className="text-navy-400" />
+                    <ChevronRight size={16} className="text-navy-400" />
                   )}
                 </button>
 
                 {!group.comingSoon && isOpen && (
-                  <div className="flex flex-col gap-0.5 pl-1 pt-0.5">
+                  <div className="flex flex-col gap-1 pl-1.5 pt-1">
                     {group.items.map((item) => {
                       const ItemIcon = item.icon;
+                      const c = group.color;
                       return (
                         <NavLink
                           key={item.path}
                           to={item.path}
                           className={({ isActive }) =>
-                            `flex items-center gap-2 rounded-lg border-l-2 px-2 py-1.5 text-[13px] transition-colors ${
+                            `flex items-center gap-2.5 rounded-lg border-l-[3px] px-3 py-2 text-sm transition-colors ${
                               isActive
-                                ? "border-l-brand-500 bg-navy-600 font-semibold text-brand-500"
+                                ? `${c ? c.activeBorder : "border-l-brand-500"} ${c ? c.activeBg : "bg-navy-600"} font-semibold ${c ? c.activeText : "text-brand-500"}`
                                 : "border-l-transparent text-navy-50 hover:bg-navy-600 hover:text-white"
                             }`
                           }
                         >
                           {({ isActive }) => (
                             <>
-                              <ItemIcon size={15} className={isActive ? "text-brand-500" : ""} />
+                              <ItemIcon size={17} className={isActive && c ? c.icon : undefined} />
                               {item.label}
                             </>
                           )}
@@ -270,24 +304,24 @@ export default function Layout({ children }: { children: ReactNode }) {
           onClick={() => canSwitchCompany && navigate("/choose-company")}
           disabled={!canSwitchCompany}
           title={canSwitchCompany ? "Switch company" : undefined}
-          className={`mt-2 flex items-center gap-2 rounded-lg border-t border-navy-600 px-2 pt-3 text-left ${canSwitchCompany ? "hover:bg-navy-600" : "cursor-default"}`}
+          className={`mt-2 flex items-center gap-2.5 rounded-lg border-t border-navy-600 px-2 pt-3 text-left ${canSwitchCompany ? "hover:bg-navy-600" : "cursor-default"}`}
         >
-          <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-navy-700 text-brand-500">
-            {scopedCompany ? <Building2 size={13} /> : <Globe2 size={13} />}
+          <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-navy-700 text-brand-500">
+            {scopedCompany ? <Building2 size={15} /> : <Globe2 size={15} />}
           </div>
           <div className="min-w-0 flex-1">
-            <div className="truncate text-[12px] font-medium text-white">{scopedCompany ? scopedCompany.name : "All companies"}</div>
-            {canSwitchCompany && <div className="text-[10px] text-navy-400">Switch company</div>}
+            <div className="truncate text-sm font-medium text-white">{scopedCompany ? scopedCompany.name : "All companies"}</div>
+            {canSwitchCompany && <div className="text-xs text-navy-400">Switch company</div>}
           </div>
         </button>
 
-        <div className="flex items-center gap-2 px-2 pb-1 pt-2">
-          <div className="flex h-[26px] w-[26px] shrink-0 items-center justify-center rounded-full bg-navy-700 text-[11px] font-medium text-brand-500">
+        <div className="flex items-center gap-2.5 px-2 pb-1 pt-3">
+          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-navy-700 text-xs font-medium text-brand-500">
             {initials(displayName || "?")}
           </div>
-          <div className="min-w-0 flex-1 truncate text-xs text-white">{displayName}</div>
+          <div className="min-w-0 flex-1 truncate text-sm text-white">{displayName}</div>
           <button onClick={handleLogout} aria-label="Sign out" title="Sign out">
-            <LogOut size={15} className="text-navy-400 hover:text-white" />
+            <LogOut size={17} className="text-navy-400 hover:text-white" />
           </button>
         </div>
       </aside>
