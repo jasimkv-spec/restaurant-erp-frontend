@@ -4,13 +4,12 @@ import { SearchableSelect } from "../../components/SearchableSelect";
 import { useOptions } from "../../lib/useOptions";
 import { api, type ListResponse } from "../../lib/apiClient";
 
-interface GrnSummary {
+interface GrnPoolEntry {
   id: string;
   grnNo: string;
   vendorId: string;
   grnDate: string;
-  goodsValue: number;
-  costsValue: number;
+  value: number;
 }
 
 interface AdditionalCostRow {
@@ -25,6 +24,13 @@ interface AdditionalCostRow {
  * offers GRNs for the vendor currently selected in the header, that aren't
  * already linked to a different invoice (no partial/repeat invoicing of the
  * same GRN in this first version).
+ *
+ * Picking a GRN pulls in every one of its own lines as a separate invoice
+ * row (item, qty, price, discount, tax, line total - the same level of
+ * detail as a Purchase Order), plus one row per additional cost the GRN
+ * itself carries (freight/insurance/handling), rather than a single lumped
+ * summary row per GRN. Every row from the same GRN shares that GRN's id, so
+ * the backend can still tell which whole GRNs this invoice links to.
  */
 function GrnPickerPanel({
   header,
@@ -35,10 +41,12 @@ function GrnPickerPanel({
   lines: Record<string, any>[];
   addLines: (rows: Record<string, any>[]) => void;
 }) {
-  const [pool, setPool] = useState<GrnSummary[]>([]);
+  const [pool, setPool] = useState<GrnPoolEntry[]>([]);
   const [alreadyInvoiced, setAlreadyInvoiced] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
+  const [pulling, setPulling] = useState(false);
   const [selectedGrnId, setSelectedGrnId] = useState("");
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     Promise.all([
@@ -57,8 +65,9 @@ function GrnPickerPanel({
             grnNo: g.grnNo,
             vendorId: g.vendorId,
             grnDate: g.grnDate,
-            goodsValue: (g.lines ?? []).reduce((s: number, l: any) => s + Number(l.acceptedQty) * Number(l.unitCost ?? 0), 0),
-            costsValue: (g.additionalCosts ?? []).reduce((s: number, c: any) => s + Number(c.amount), 0),
+            value:
+              (g.lines ?? []).reduce((s: number, l: any) => s + Number(l.acceptedQty) * Number(l.unitCost ?? 0), 0) +
+              (g.additionalCosts ?? []).reduce((s: number, c: any) => s + Number(c.amount), 0),
           }))
         );
       })
@@ -71,13 +80,57 @@ function GrnPickerPanel({
   );
   const options = availablePool.map((g) => ({
     value: g.id,
-    label: `${g.grnNo} - ${new Date(g.grnDate).toLocaleDateString()} - value ${(g.goodsValue + g.costsValue).toFixed(2)}`,
+    label: `${g.grnNo} - ${new Date(g.grnDate).toLocaleDateString()} - value ${g.value.toFixed(2)}`,
   }));
 
-  function pick(grnId: string) {
+  async function pick(grnId: string) {
     if (!grnId) return;
-    addLines([{ grnId }]);
-    setSelectedGrnId("");
+    setError(null);
+    setPulling(true);
+    try {
+      const grn = await api.get<any>(`/api/procurement/grns/${grnId}`);
+      const goodsRows = (grn.lines ?? []).map((l: any) => {
+        const qty = Number(l.acceptedQty);
+        const unitPrice = l.poLine ? Number(l.poLine.unitPrice) : Number(l.unitCost ?? 0);
+        const taxPct = l.poLine?.tax ? Number(l.poLine.tax.rate) : null;
+        const taxAmount = l.poLine ? Number(l.poLine.taxAmount ?? 0) : 0;
+        const discount = l.poLine?.discountPct
+          ? `${Number(l.poLine.discountPct)}%`
+          : l.poLine?.discountAmount
+          ? Number(l.poLine.discountAmount).toFixed(2)
+          : "-";
+        const lineTotal = l.poLine ? Number(l.poLine.lineTotal) : qty * unitPrice;
+        return {
+          grnId,
+          itemName: l.item?.name ?? l.item?.code ?? "-",
+          qty,
+          unitPrice,
+          discountDisplay: discount,
+          taxDisplay: taxPct !== null ? `${taxPct}% (${taxAmount.toFixed(2)})` : "-",
+          lineTotal,
+        };
+      });
+      const costRows = (grn.additionalCosts ?? []).map((c: any) => ({
+        grnId,
+        itemName: `${c.costType?.name ?? "Additional cost"} (GRN cost)`,
+        qty: 1,
+        unitPrice: Number(c.amount),
+        discountDisplay: "-",
+        taxDisplay: "-",
+        lineTotal: Number(c.amount),
+      }));
+      const rows = [...goodsRows, ...costRows];
+      if (rows.length === 0) {
+        setError(`${grn.grnNo} has no lines or costs to pull in.`);
+        return;
+      }
+      addLines(rows);
+      setSelectedGrnId("");
+    } catch (err) {
+      setError("Could not load that GRN's lines - please try again.");
+    } finally {
+      setPulling(false);
+    }
   }
 
   return (
@@ -93,12 +146,15 @@ function GrnPickerPanel({
             options={options}
             value={selectedGrnId}
             onChange={pick}
+            disabled={pulling}
             placeholder={options.length ? "Add a Posted GRN to this invoice..." : "No un-invoiced Posted GRNs for this vendor"}
             className="w-full rounded-lg border border-sky-200 bg-white px-3 py-2 text-sm focus:border-sky-400 focus:outline-none"
           />
           <p className="mt-1.5 text-[11px] text-gray-500">
-            One invoice can cover several GRNs - add every GRN this supplier's invoice is billing for.
+            Adding a GRN pulls in every one of its lines (item, qty, price, discount, tax) plus its own additional
+            costs - remove individual rows below if this invoice doesn't cover all of them.
           </p>
+          {error && <p className="mt-1 text-[11px] font-medium text-red-600">{error}</p>}
         </>
       )}
     </div>
@@ -206,46 +262,26 @@ function AdditionalCostsPanel({
 
 /**
  * Purchase Invoice - captures the vendor's own invoice (number, date,
- * amount) against one or more Posted GRNs, and, once posted, runs a
- * three-way match (PO price/qty vs GRN accepted qty vs this invoice's gross,
- * within the company's configured tolerance - see resolvePolicy /
- * PoGrnInvoiceTolerancePct) before booking Dr GRN-Clearing / Cr Accounts
- * Payable. The match includes each linked GRN's own additional costs
- * (freight/insurance/handling added at receiving time) plus anything added
- * straight on this invoice below, so "total GRN amount vs invoice amount"
- * accounts for landed cost, not just the goods themselves.
+ * received date, gross/tax amount) against one or more Posted GRNs, and,
+ * once posted, runs a three-way match (PO price/qty vs GRN accepted qty vs
+ * this invoice's gross, within the company's configured tolerance - see
+ * resolvePolicy / PoGrnInvoiceTolerancePct) before booking Dr GRN-Clearing /
+ * Cr Accounts Payable. The line grid mirrors a Purchase Order's own detail
+ * (item, qty, unit price, discount, tax, line total) by pulling in every
+ * line from each linked GRN, rather than one lumped row per GRN - so the
+ * invoice's own total can be checked line-by-line against what was actually
+ * ordered and received, not just as a single aggregate figure.
  */
 export default function PurchaseInvoices() {
   const vendorOptions = useOptions("/api/procurement/vendors", (v) => `${v.code} - ${v.name}`);
   const costTypeOptions = useOptions("/api/procurement/additional-cost-types", (t) => `${t.code} - ${t.name}`);
-  const [grnIndex, setGrnIndex] = useState<Record<string, GrnSummary>>({});
-
-  useEffect(() => {
-    api.get<ListResponse<any>>("/api/procurement/grns?pageSize=500").then((res) => {
-      setGrnIndex(
-        Object.fromEntries(
-          res.data.map((g) => [
-            g.id,
-            {
-              id: g.id,
-              grnNo: g.grnNo,
-              vendorId: g.vendorId,
-              grnDate: g.grnDate,
-              goodsValue: (g.lines ?? []).reduce((s: number, l: any) => s + Number(l.acceptedQty) * Number(l.unitCost ?? 0), 0),
-              costsValue: (g.additionalCosts ?? []).reduce((s: number, c: any) => s + Number(c.amount), 0),
-            },
-          ])
-        )
-      );
-    });
-  }, []);
 
   const today = new Date().toISOString().slice(0, 10);
 
   return (
     <DocumentScreen
       title="Purchase Invoices"
-      description="Records the vendor's own invoice against one or more Posted GRNs. Posting runs a three-way match (PO vs GRN vs invoice amount, including any additional costs) and books the payable."
+      description="Records the vendor's own invoice against one or more Posted GRNs, with the same item/qty/price/tax/discount detail as a Purchase Order. Posting runs a three-way match and books the payable."
       basePath="/api/procurement/purchase-invoices"
       createDefaults={{ invoiceDate: today, invoiceReceivedDate: today, gross: "", tax: "0", additionalCosts: [] }}
       searchAccessor={(r) => `${r.invoiceNo ?? ""} ${r.vendor?.code ?? ""} ${r.vendor?.name ?? ""}`.toLowerCase()}
@@ -281,12 +317,9 @@ export default function PurchaseInvoices() {
         { key: "additionalCosts", label: "Additional Costs", type: "text", hidden: true },
       ]}
       linesExtra={({ header, lines, addLines, setHeaderFields }) => {
-        const grnGoodsCosts = lines.reduce((sum: number, l: any) => {
-          const g = grnIndex[l.grnId];
-          return sum + (g ? g.goodsValue + g.costsValue : 0);
-        }, 0);
+        const linesValue = lines.reduce((sum: number, l: any) => sum + Number(l.lineTotal || 0), 0);
         const invoiceCosts = (header.additionalCosts ?? []).reduce((s: number, c: any) => s + Number(c.amount), 0);
-        const expected = grnGoodsCosts + invoiceCosts;
+        const expected = linesValue + invoiceCosts;
         const gross = Number(header.gross || 0);
         const variance = expected > 0 ? ((gross - expected) / expected) * 100 : 0;
         const withinRoughTolerance = Math.abs(variance) <= 2;
@@ -294,7 +327,7 @@ export default function PurchaseInvoices() {
           <>
             <GrnPickerPanel header={header} lines={lines} addLines={addLines} />
             <AdditionalCostsPanel header={header} setHeaderFields={setHeaderFields} costTypeOptions={costTypeOptions} />
-            {(lines.some((l: any) => l.grnId) || invoiceCosts > 0) && (
+            {(lines.length > 0 || invoiceCosts > 0) && (
               <div
                 className={`mb-5 rounded-xl border p-4 text-sm shadow-sm ${
                   withinRoughTolerance ? "border-emerald-200 bg-emerald-50/50 text-emerald-800" : "border-amber-200 bg-amber-50/50 text-amber-800"
@@ -315,22 +348,12 @@ export default function PurchaseInvoices() {
       }}
       lineFields={[
         { key: "grnId", label: "GRN", type: "text", hidden: true },
-        { key: "grnNoDisplay", label: "GRN No.", type: "readonly", computed: (row) => grnIndex[row.grnId]?.grnNo ?? "-" },
-        {
-          key: "grnDateDisplay",
-          label: "GRN Date",
-          type: "readonly",
-          computed: (row) => (grnIndex[row.grnId]?.grnDate ? new Date(grnIndex[row.grnId]!.grnDate).toLocaleDateString() : "-"),
-        },
-        {
-          key: "grnValueDisplay",
-          label: "GRN Value",
-          type: "readonly",
-          computed: (row) => {
-            const g = grnIndex[row.grnId];
-            return g ? (g.goodsValue + g.costsValue).toFixed(2) : "-";
-          },
-        },
+        { key: "itemNameDisplay", label: "Item", type: "readonly", computed: (row) => row.itemName ?? "-" },
+        { key: "qtyDisplay", label: "Qty", type: "readonly", computed: (row) => String(row.qty ?? "-"), compact: true },
+        { key: "unitPriceDisplay", label: "Unit Price", type: "readonly", computed: (row) => Number(row.unitPrice ?? 0).toFixed(2), compact: true },
+        { key: "discountDisplayField", label: "Discount", type: "readonly", computed: (row) => row.discountDisplay ?? "-", compact: true },
+        { key: "taxDisplayField", label: "Tax", type: "readonly", computed: (row) => row.taxDisplay ?? "-", compact: true },
+        { key: "lineTotalDisplay", label: "Line Total", type: "readonly", computed: (row) => Number(row.lineTotal ?? 0).toFixed(2), compact: true },
       ]}
       emptyLine={{ grnId: "" }}
       lifecycle={[
