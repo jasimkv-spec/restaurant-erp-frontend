@@ -16,28 +16,47 @@ interface AdditionalCostRow {
   remark: string;
 }
 
+const YES_NO = [
+  { value: "false", label: "No" },
+  { value: "true", label: "Yes" },
+];
+
+function isFocRow(row: Record<string, any>): boolean {
+  return row.isFocLine === "true" || row.isFocLine === true;
+}
+
 /**
  * A GRN line's monetary value, for display and for the PO-comparison
  * summary panel below - never what actually gets posted to stock/GL (that
- * stays acceptedQty x unitCost, pre-tax - see /grns/:id/post). Three cases,
- * checked in order: a saved line already carries the backend's own
- * authoritative `lineTotal` (tax/discount-inclusive when tied to a PO - see
- * GrnLine.lineTotal's doc comment in schema.prisma); a line still being
- * edited after a PO recall carries `poUnitValue` (that PO line's per-unit
- * value) instead, so the figure stays accurate as the qty is adjusted before
- * saving; anything else (a manually added line, no PO reference) falls back
- * to plain acceptedQty x unitCost, matching the backend's own no-PO formula.
+ * stays acceptedQty x unitCost, pre-tax/pre-discount - see /grns/:id/post).
+ * A saved line already carries the backend's own authoritative `lineTotal`
+ * (this GRN's own qty/unitCost/discount/tax math - see GrnLine.lineTotal's
+ * doc comment in schema.prisma), which is always used once present. While
+ * still being edited (no lineTotal yet), this estimates the same math
+ * client-side: gross (acceptedQty x unitCost, 0 for a whole-FOC line) less
+ * this line's own discount - a PO-recalled row's `poUnitValue` (that PO
+ * line's per-unit value) stands in for unitCost there so the estimate stays
+ * accurate as qty is adjusted, and free (focQty) units never add to the
+ * gross either way. Deliberately skips a live tax estimate (the PO line's
+ * tax rate isn't fetched onto every row) - the real, tax-inclusive figure
+ * comes back from the server once saved.
  *
  * `lineTotal` defaults to 0 on the database column (added after this app had
  * already been live for a while), so a line saved before this feature
  * existed carries a real, but meaningless, stored 0 - checking `> 0` rather
  * than just "is it set" means those older GRNs still fall through to the
- * acceptedQty x unitCost estimate instead of wrongly showing zero.
+ * estimate instead of wrongly showing zero.
  */
 function grnLineAmount(row: Record<string, any>): number {
   if (row.lineTotal != null && Number(row.lineTotal) > 0) return Number(row.lineTotal);
-  if (row.poUnitValue != null) return Number(row.acceptedQty || 0) * Number(row.poUnitValue);
-  return Number(row.acceptedQty || 0) * Number(row.unitCost || 0);
+  const unitCost = row.poUnitValue != null ? Number(row.poUnitValue) : Number(row.unitCost || 0);
+  const gross = isFocRow(row) ? 0 : Number(row.acceptedQty || 0) * unitCost;
+  const discAmt = row.discountAmount !== "" && row.discountAmount != null
+    ? Number(row.discountAmount)
+    : row.discountPct
+      ? (gross * Number(row.discountPct)) / 100
+      : 0;
+  return Math.max(0, gross - discAmt);
 }
 
 /**
@@ -511,6 +530,33 @@ export default function Grns() {
         { key: "expiryDate", label: "Expiry Date", type: "date", compact: true },
         { key: "unitCost", label: "Unit Cost", type: "number", compact: true },
         {
+          key: "discountPct",
+          label: "Disc %",
+          type: "number",
+          compact: true,
+          // A discount the vendor offers right at delivery time - separate
+          // from (and on top of) whatever discount was already on the PO.
+        },
+        { key: "discountAmount", label: "Disc Amt", type: "number", compact: true },
+        // The Yes/No toggle itself stays on the editable form (it's what
+        // actually flags a line as free) but is redundant on paper once FOC
+        // Qty already shows the free quantity, so it's dropped from print -
+        // same convention as PurchaseOrders.tsx's own isFocLine column.
+        { key: "isFocLine", label: "FOC line?", type: "select", options: YES_NO, compact: true, hideInPrint: true },
+        {
+          key: "focQty",
+          label: "FOC Qty",
+          type: "number",
+          compact: true,
+          // Extra free units the vendor throws in alongside acceptedQty -
+          // received into stock at zero extra cost. For a whole-FOC line
+          // the free quantity is acceptedQty itself (this field stays 0).
+          displayValue: (row) => {
+            const val = Number(row.focQty) || 0;
+            return val > 0 ? String(val) : "-";
+          },
+        },
+        {
           key: "amountDisplay",
           label: "Amount",
           type: "readonly",
@@ -536,6 +582,10 @@ export default function Grns() {
         batchNo: "",
         expiryDate: "",
         unitCost: "",
+        discountPct: "",
+        discountAmount: "",
+        isFocLine: "false",
+        focQty: "",
       }}
       lineWarnings={undefined}
       summary={({ header, lines }) => {

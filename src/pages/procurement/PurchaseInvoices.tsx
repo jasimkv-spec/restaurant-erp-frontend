@@ -113,7 +113,16 @@ function GrnPickerPanel({
       const grn = await api.get<any>(`/api/procurement/grns/${grnId}`);
       const goodsRows = (grn.lines ?? []).map((l: any) => {
         const qty = Number(l.acceptedQty);
-        const unitPrice = l.poLine ? Number(l.poLine.unitPrice) : Number(l.unitCost ?? 0);
+        // Unit price and line total come from the GRN line itself - what
+        // was actually recorded as received and costed - not the PO's
+        // ordered qty/price. A GRN can legitimately differ from its PO
+        // (approved price variance, partial receipt, etc.), and the
+        // invoice needs to match against what actually happened at
+        // receiving, not what was originally ordered. Tax rate/discount
+        // below stay informational display pulled from the PO line (this
+        // GRN doesn't store its own separate tax/discount breakdown), but
+        // they don't feed lineTotal or the invoice's expected-amount check.
+        const unitPrice = Number(l.unitCost ?? 0);
         const taxPct = l.poLine?.tax ? Number(l.poLine.tax.rate) : null;
         const taxAmount = l.poLine ? Number(l.poLine.taxAmount ?? 0) : 0;
         const discount = l.poLine?.discountPct
@@ -121,7 +130,7 @@ function GrnPickerPanel({
           : l.poLine?.discountAmount
           ? Number(l.poLine.discountAmount).toFixed(2)
           : "-";
-        const lineTotal = l.poLine ? Number(l.poLine.lineTotal) : qty * unitPrice;
+        const lineTotal = Number(l.lineTotal ?? qty * unitPrice);
         return {
           grnId,
           itemName: l.item?.name ?? l.item?.code ?? "-",
