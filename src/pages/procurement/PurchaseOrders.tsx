@@ -382,6 +382,7 @@ export default function PurchaseOrders() {
             );
           },
         },
+        { key: "createdBy", label: "Created by", render: (r) => r.createdBy?.displayName ?? "-" },
         { key: "status", label: "Status" },
       ]}
       headerFields={[
