@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { DocumentScreen } from "../../components/DocumentScreen";
+import { SearchableSelect } from "../../components/SearchableSelect";
 import { useOptions } from "../../lib/useOptions";
 import { useAuth } from "../../context/AuthContext";
 import { api, type ListResponse } from "../../lib/apiClient";
@@ -21,18 +22,13 @@ interface VendorIndexEntry {
   paymentTermsId: string | null;
 }
 
-interface PoPoolRow {
-  mrLineId: string;
+interface AvailableMr {
   mrId: string;
   mrNo: string;
   branchId: string;
   branchName: string;
-  itemId: string;
-  itemCode: string;
-  itemName: string;
-  uomId: string;
-  uomCode: string;
-  qty: number;
+  requestDate: string;
+  lineCount: number;
 }
 
 // Kept short since this renders inside a native <select> - the closed box
@@ -49,128 +45,100 @@ const YES_NO = [
 ];
 
 /**
- * Panel offering to pull lines straight from the Approved MR pool into this
- * PO (task: "Option to retrieve MR from approved MR list for direct PO
- * creation") - rendered above the line grid only while the form is open.
- * Excludes lines already sitting in a live consolidation or already on any
- * PO (server-side, via GET .../po-pool), and additionally hides whatever's
- * already been pulled into *this* form so the same MR line can't be added
- * twice in one go.
+ * Panel offering to recall a whole Approved MR straight into this PO
+ * ("Recall from MR" - search by MR number or browse the full list, pick
+ * one, every line on it gets added to the grid at once). Whole-document
+ * pull rather than line-by-line: once selected, the MR disappears from
+ * this list (both locally, right away, and for good once the PO is saved -
+ * see the server-side exclusion in GET .../po-pool). The user is still
+ * free to add/remove individual lines on the PO afterward - recalling just
+ * seeds the grid, it doesn't lock it.
  */
 function MrPoolPanel({
   header,
-  lines,
   addLines,
 }: {
   header: Record<string, any>;
-  lines: Record<string, any>[];
   addLines: (rows: Record<string, any>[]) => void;
 }) {
-  const [open, setOpen] = useState(false);
-  const [pool, setPool] = useState<PoPoolRow[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [pool, setPool] = useState<AvailableMr[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [selectedMrId, setSelectedMrId] = useState("");
+  const [recalling, setRecalling] = useState(false);
+  const [lastRecalled, setLastRecalled] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (!open) return;
+  function loadPool() {
     setLoading(true);
     api
-      .get<{ data: PoPoolRow[] }>("/api/procurement/material-requests/po-pool")
+      .get<{ data: AvailableMr[] }>("/api/procurement/material-requests/po-pool")
       .then((res) => setPool(res.data))
       .finally(() => setLoading(false));
-  }, [open]);
-
-  const alreadyOnForm = new Set(lines.map((l) => l.sourceMrLineId).filter(Boolean));
-  const visiblePool = pool.filter(
-    (r) => !alreadyOnForm.has(r.mrLineId) && (!header.branchId || r.branchId === header.branchId)
-  );
-
-  function toggle(id: string) {
-    setSelected((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
   }
 
-  function addSelected() {
-    const rows = visiblePool
-      .filter((r) => selected.has(r.mrLineId))
-      .map((r) => ({
-        itemId: r.itemId,
-        qty: r.qty,
-        uomId: r.uomId,
+  useEffect(() => {
+    loadPool();
+  }, []);
+
+  const visiblePool = header.branchId ? pool.filter((m) => m.branchId === header.branchId) : pool;
+  const mrOptions = visiblePool.map((m) => ({
+    value: m.mrId,
+    label: `${m.mrNo} - ${m.branchName} (${m.lineCount} item${m.lineCount === 1 ? "" : "s"}, ${new Date(m.requestDate).toLocaleDateString()})`,
+  }));
+
+  async function recallSelected(mrId: string) {
+    if (!mrId) return;
+    setSelectedMrId(mrId);
+    setError(null);
+    setRecalling(true);
+    try {
+      const mr = await api.get<any>(`/api/procurement/material-requests/${mrId}`);
+      const rows = (mr.lines ?? []).map((line: any) => ({
+        itemId: line.itemId,
+        qty: Number(line.approvedQty ?? line.requestedQty),
+        uomId: line.uomId,
         unitPrice: "",
-        sourceMrId: r.mrId,
-        sourceMrLineId: r.mrLineId,
+        sourceMrId: mr.id,
+        sourceMrLineId: line.id,
       }));
-    addLines(rows);
-    setSelected(new Set());
+      addLines(rows);
+      // Drop it from the picker immediately so the same MR can't be
+      // recalled twice into this same form - the server-side exclusion
+      // only takes effect once this PO is actually saved.
+      setPool((prev) => prev.filter((m) => m.mrId !== mrId));
+      setLastRecalled(mr.mrNo);
+      setSelectedMrId("");
+    } catch (err) {
+      setError("Could not load that material request's lines - please try again.");
+    } finally {
+      setRecalling(false);
+    }
   }
 
   return (
     <div className="mb-5 rounded-xl border border-emerald-100 bg-emerald-50/40 p-4 shadow-sm">
-      <button
-        onClick={() => setOpen((o) => !o)}
-        className="flex w-full items-center justify-between text-left text-[11px] font-semibold uppercase tracking-wide text-emerald-700"
-      >
-        <span>Pull lines from Approved Material Requests</span>
-        <span className="text-emerald-600">{open ? "Hide" : "Show"}</span>
-      </button>
-      {open && (
-        <div className="mt-3">
-          {loading ? (
-            <div className="py-4 text-center text-sm text-gray-400">Loading approved MR lines...</div>
-          ) : visiblePool.length === 0 ? (
-            <div className="py-4 text-center text-sm text-gray-400">
-              No unassigned Approved MR lines{header.branchId ? " for this branch" : ""}.
-            </div>
-          ) : (
-            <>
-              <div className="max-h-64 overflow-y-auto rounded-lg border border-emerald-100 bg-white">
-                <table className="w-full text-xs">
-                  <thead className="sticky top-0 bg-emerald-50">
-                    <tr>
-                      <th className="w-8 px-2 py-1.5"></th>
-                      <th className="px-2 py-1.5 text-left font-semibold uppercase tracking-wide text-emerald-700">MR No.</th>
-                      <th className="px-2 py-1.5 text-left font-semibold uppercase tracking-wide text-emerald-700">Branch</th>
-                      <th className="px-2 py-1.5 text-left font-semibold uppercase tracking-wide text-emerald-700">Item</th>
-                      <th className="px-2 py-1.5 text-right font-semibold uppercase tracking-wide text-emerald-700">Qty</th>
-                      <th className="px-2 py-1.5 text-left font-semibold uppercase tracking-wide text-emerald-700">UOM</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {visiblePool.map((r) => (
-                      <tr key={r.mrLineId} className="border-t border-emerald-50">
-                        <td className="px-2 py-1.5">
-                          <input type="checkbox" checked={selected.has(r.mrLineId)} onChange={() => toggle(r.mrLineId)} />
-                        </td>
-                        <td className="px-2 py-1.5">{r.mrNo}</td>
-                        <td className="px-2 py-1.5">{r.branchName}</td>
-                        <td className="px-2 py-1.5">
-                          {r.itemCode} - {r.itemName}
-                        </td>
-                        <td className="px-2 py-1.5 text-right">{r.qty}</td>
-                        <td className="px-2 py-1.5">{r.uomCode}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-              <button
-                onClick={addSelected}
-                disabled={selected.size === 0}
-                className="mt-2 rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-700 disabled:opacity-40"
-              >
-                Add {selected.size > 0 ? `${selected.size} selected` : "selected"} line{selected.size === 1 ? "" : "s"}
-              </button>
-              <p className="mt-1.5 text-[11px] text-gray-500">
-                Unit price isn't carried over from the MR - fill it in on each added line before saving.
-              </p>
-            </>
+      <div className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-emerald-700">Recall from Material Request</div>
+      {loading ? (
+        <div className="py-2 text-sm text-gray-400">Loading approved material requests...</div>
+      ) : (
+        <>
+          <SearchableSelect
+            options={mrOptions}
+            value={selectedMrId}
+            onChange={recallSelected}
+            placeholder={mrOptions.length ? "Type an MR number, or click to browse..." : "No unassigned Approved MRs available"}
+            disabled={recalling || mrOptions.length === 0}
+            className="w-full rounded-lg border border-emerald-200 bg-white px-3 py-2 text-sm focus:border-emerald-400 focus:outline-none"
+          />
+          <p className="mt-1.5 text-[11px] text-gray-500">
+            Selecting an MR pulls in every line on it - unit price isn't carried over, so fill that in before saving. Add or
+            remove lines afterward as needed. Once recalled, that MR won't be offered on another PO.
+          </p>
+          {lastRecalled && !error && (
+            <p className="mt-1 text-[11px] font-medium text-emerald-700">Pulled all lines from {lastRecalled}.</p>
           )}
-        </div>
+          {error && <p className="mt-1 text-[11px] font-medium text-red-600">{error}</p>}
+        </>
       )}
     </div>
   );
@@ -455,7 +423,7 @@ export default function PurchaseOrders() {
         { key: "shippingTerms", label: "Ship Terms", type: "text", placeholder: "e.g. FOB, CIF...", section: "Logistics" },
         { key: "deliveryInstructions", label: "Delivery Note", type: "textarea", section: "Logistics" },
       ]}
-      linesExtra={({ header, lines, addLines }) => <MrPoolPanel header={header} lines={lines} addLines={addLines} />}
+      linesExtra={({ header, addLines }) => <MrPoolPanel header={header} addLines={addLines} />}
       lineFields={[
         { key: "itemId", label: "Item", type: "select", required: true, options: itemOptions },
         { key: "instructions", label: "Instruction", type: "text" },
