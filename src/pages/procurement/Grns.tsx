@@ -17,6 +17,30 @@ interface AdditionalCostRow {
 }
 
 /**
+ * A GRN line's monetary value, for display and for the PO-comparison
+ * summary panel below - never what actually gets posted to stock/GL (that
+ * stays acceptedQty x unitCost, pre-tax - see /grns/:id/post). Three cases,
+ * checked in order: a saved line already carries the backend's own
+ * authoritative `lineTotal` (tax/discount-inclusive when tied to a PO - see
+ * GrnLine.lineTotal's doc comment in schema.prisma); a line still being
+ * edited after a PO recall carries `poUnitValue` (that PO line's per-unit
+ * value) instead, so the figure stays accurate as the qty is adjusted before
+ * saving; anything else (a manually added line, no PO reference) falls back
+ * to plain acceptedQty x unitCost, matching the backend's own no-PO formula.
+ *
+ * `lineTotal` defaults to 0 on the database column (added after this app had
+ * already been live for a while), so a line saved before this feature
+ * existed carries a real, but meaningless, stored 0 - checking `> 0` rather
+ * than just "is it set" means those older GRNs still fall through to the
+ * acceptedQty x unitCost estimate instead of wrongly showing zero.
+ */
+function grnLineAmount(row: Record<string, any>): number {
+  if (row.lineTotal != null && Number(row.lineTotal) > 0) return Number(row.lineTotal);
+  if (row.poUnitValue != null) return Number(row.acceptedQty || 0) * Number(row.poUnitValue);
+  return Number(row.acceptedQty || 0) * Number(row.unitCost || 0);
+}
+
+/**
  * Freight/Insurance/Handling lines added to this GRN's own amount - saved
  * separately from the goods lines (GrnAdditionalCost, not GrnLine), so a
  * cost-only GRN (no items, just a freight invoice) is possible too. Stored
@@ -164,6 +188,8 @@ function PoPoolPanel({
   autoRecallId?: string;
   /** Fires once the auto-recall attempt above has resolved - lets the parent screen clear its own seed id, so a later manual "+ New" (a freshly-mounted panel instance) doesn't repeat the same auto-pull. */
   onAutoRecallHandled?: () => void;
+  /** Fires with the full PO record once it's been fetched to recall its lines - lets the parent screen show a live "PO Amount vs. This GRN's Amount" comparison (see Grns()'s own `summary` prop) without a second fetch. */
+  onPoLoaded?: (po: any) => void;
 }) {
   const [pool, setPool] = useState<AvailablePo[]>([]);
   const [loading, setLoading] = useState(true);
@@ -233,6 +259,15 @@ function PoPoolPanel({
           batchNo: "",
           expiryDate: "",
           unitCost: x.line.unitPrice,
+          // This PO line's own tax/discount-inclusive value, per unit of its
+          // ordered qty - baked on here (not a declared lineField, so never
+          // sent to the server) purely so the Amount column below can show
+          // a live, edit-aware preview (acceptedQty x poUnitValue) while
+          // this form is still being filled in. The backend recomputes and
+          // stores the authoritative per-line lineTotal itself on save
+          // using the exact same math (see GrnLine.lineTotal's own doc
+          // comment in schema.prisma) - this is display-only.
+          poUnitValue: Number(x.line.qty) > 0 ? Number(x.line.lineTotal) / Number(x.line.qty) : 0,
         }));
 
       if (rows.length === 0) {
@@ -243,6 +278,7 @@ function PoPoolPanel({
 
       addLines(rows);
       setHeaderFields({ poId: po.id, vendorId: po.vendorId, branchId: po.branchId });
+      onPoLoaded?.(po);
       setLastRecalled(po.poNo);
       setSelectedPoId("");
     } catch (err) {
@@ -299,6 +335,12 @@ export default function Grns() {
   // that one PO's outstanding lines straight into a fresh form (see
   // PoPoolPanel's autoRecallId handling below).
   const [seedPoId, setSeedPoId] = useState<string | undefined>((location.state as any)?.poId);
+  // The full PO record, fetched once by PoPoolPanel when its lines get
+  // recalled into this form - used only to show a live "PO Amount vs. This
+  // GRN's Amount" comparison while creating (see the `summary` prop below).
+  // Guarded there by header.poId === recalledPo.id so a stale value from a
+  // cancelled/earlier create never gets shown against an unrelated one.
+  const [recalledPo, setRecalledPo] = useState<any | null>(null);
   const { user, activeCompanyScope } = useAuth();
   const allCompanyOptions = useOptions("/api/admin/companies", (c) => `${c.code} - ${c.name}`);
   const allBranchOptions = useOptions("/api/admin/branches", (b) => `${b.code} - ${b.name}`);
@@ -362,7 +404,7 @@ export default function Grns() {
           if (branch?.defaultWarehouseId) return { warehouseId: branch.defaultWarehouseId };
         }
       }}
-      searchAccessor={(r) => `${r.grnNo ?? ""} ${r.vendor?.code ?? ""} ${r.vendor?.name ?? ""}`.toLowerCase()}
+      searchAccessor={(r) => `${r.grnNo ?? ""} ${r.vendorRefNo ?? ""} ${r.vendor?.code ?? ""} ${r.vendor?.name ?? ""}`.toLowerCase()}
       searchPlaceholder="Search GRN No. or vendor..."
       filters={[
         { key: "vendorId", label: "Vendor", type: "select", options: vendorOptions, accessor: (r) => r.vendorId },
@@ -371,6 +413,7 @@ export default function Grns() {
       dateRangeFilter={{ key: "grnDate", label: "Transaction date" }}
       listColumns={[
         { key: "grnNo", label: "GRN No." },
+        { key: "vendorRefNo", label: "Vendor DO / Invoice No.", render: (r) => r.vendorRefNo || "-" },
         { key: "vendor", label: "Vendor", render: (r) => (r.vendor ? `${r.vendor.code} - ${r.vendor.name}` : "-") },
         { key: "branch", label: "Branch", render: (r) => (r.branch ? `${r.branch.code} - ${r.branch.name}` : "-") },
         { key: "warehouse", label: "Warehouse", render: (r) => r.warehouse?.name ?? "-" },
@@ -408,6 +451,13 @@ export default function Grns() {
         },
         { key: "grnDate", label: "Receipt Date", type: "date", required: true, section: "Transaction Details" },
         { key: "vendorId", label: "Vendor", type: "select", required: true, options: vendorOptions, section: "Vendor" },
+        {
+          key: "vendorRefNo",
+          label: "Vendor DO / Invoice No.",
+          type: "text",
+          placeholder: "e.g. this delivery's DO or invoice number",
+          section: "Vendor",
+        },
         // Set by the Recall-from-PO panel below, not directly editable -
         // carries the link through to the saved payload without its own
         // form input (see DocFieldConfig.hidden).
@@ -433,6 +483,7 @@ export default function Grns() {
             setHeaderFields={setHeaderFields}
             autoRecallId={seedPoId}
             onAutoRecallHandled={() => setSeedPoId(undefined)}
+            onPoLoaded={setRecalledPo}
           />
           <AdditionalCostsPanel header={header} setHeaderFields={setHeaderFields} costTypeOptions={costTypeOptions} />
         </>
@@ -446,6 +497,13 @@ export default function Grns() {
         { key: "batchNo", label: "Batch No.", type: "text", compact: true },
         { key: "expiryDate", label: "Expiry Date", type: "date", compact: true },
         { key: "unitCost", label: "Unit Cost", type: "number", compact: true },
+        {
+          key: "amountDisplay",
+          label: "Amount",
+          type: "readonly",
+          compact: true,
+          computed: (row) => grnLineAmount(row).toFixed(2),
+        },
         // Carries the PO line link through to the save when recalled from a
         // PO - no grid column of its own (see DocFieldConfig.hidden).
         { key: "poLineId", label: "PO Line", type: "text", hidden: true },
@@ -467,6 +525,58 @@ export default function Grns() {
         unitCost: "",
       }}
       lineWarnings={undefined}
+      summary={({ header, lines }) => {
+        const linesValue = lines.reduce((s: number, l: any) => s + grnLineAmount(l), 0);
+        const costsValue = (header.additionalCosts ?? []).reduce((s: number, c: any) => s + Number(c.amount), 0);
+        const grnTotal = linesValue + costsValue;
+        // Detail view: the linked PO is already included on the saved
+        // record itself. Still creating: fall back to whichever PO was
+        // just recalled (guarded against showing a stale one left over from
+        // an earlier, cancelled create - see recalledPo's own comment).
+        const linkedPo = header.po ?? (header.poId && recalledPo?.id === header.poId ? recalledPo : null);
+        return (
+          <div className="mb-5 flex justify-end">
+            <div className="w-full space-y-1.5 rounded-xl border border-gray-200 bg-white p-4 text-sm shadow-sm sm:w-80">
+              <div className="flex justify-between">
+                <span className="text-gray-500">Goods Value</span>
+                <span className="font-semibold text-navy-900">{linesValue.toFixed(2)}</span>
+              </div>
+              {costsValue > 0 && (
+                <div className="flex justify-between">
+                  <span className="text-gray-500">Additional Costs</span>
+                  <span className="font-semibold text-navy-900">{costsValue.toFixed(2)}</span>
+                </div>
+              )}
+              <div className="flex justify-between border-t border-gray-200 pt-1.5 text-base">
+                <span className="font-bold text-navy-900">This GRN's Amount</span>
+                <span className="font-bold text-brand-700">{grnTotal.toFixed(2)}</span>
+              </div>
+              {linkedPo && (
+                <div className="mt-2 border-t border-gray-100 pt-2 text-[12px] text-gray-500">
+                  <div className="flex justify-between">
+                    <span>{linkedPo.poNo} Amount</span>
+                    <span className="font-semibold text-gray-700">{Number(linkedPo.totalAmount ?? 0).toFixed(2)}</span>
+                  </div>
+                  <p className="mt-1 text-[11px] text-gray-400">
+                    Only matches exactly when this GRN covers the whole PO in one go - a partial delivery's own amount will be less.
+                  </p>
+                </div>
+              )}
+            </div>
+          </div>
+        );
+      }}
+      printSummaryRows={(record) => {
+        const linesValue = (record.lines ?? []).reduce((s: number, l: any) => s + grnLineAmount(l), 0);
+        const costsValue = (record.additionalCosts ?? []).reduce((s: number, c: any) => s + Number(c.amount), 0);
+        const rows: { label: string; value: string; emphasize?: boolean }[] = [
+          { label: "Goods Value", value: linesValue.toFixed(2) },
+        ];
+        if (costsValue > 0) rows.push({ label: "Additional Costs", value: costsValue.toFixed(2) });
+        rows.push({ label: "GRN Amount", value: (linesValue + costsValue).toFixed(2), emphasize: true });
+        if (record.po) rows.push({ label: `${record.po.poNo} Amount`, value: Number(record.po.totalAmount ?? 0).toFixed(2) });
+        return rows;
+      }}
       lifecycle={[
         {
           fromStatus: "Draft",
