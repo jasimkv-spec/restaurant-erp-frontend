@@ -74,6 +74,8 @@ export interface DocFieldConfig {
   section?: string;
   /** Caps this lineField's input width instead of letting it stretch to fill its table cell - a Qty or a short code column looks wrong spanning the same width as an Item picker. Ignored on headerFields (those already size themselves via the panel grid). */
   compact?: boolean;
+  /** Tracks this field's value without rendering any input or grid column for it - not shown in the create/edit form, detail view, or print, but still included in the saved payload like any other field. For headerFields: a linked source document's id, set via a linesExtra panel's setHeaderFields (e.g. a GRN's poId once a PO is recalled). For lineFields: a per-row reference id carried along for the save (e.g. poLineId) that has nothing meaningful to show as its own column. */
+  hidden?: boolean;
 }
 
 export interface LifecycleStep {
@@ -328,12 +330,19 @@ export function DocumentScreen({
    * Renders extra UI just above the Line Items grid in the create/edit form
    * only (e.g. a "Pull from Approved MR" picker panel for Purchase Orders) -
    * given the current header values (so the caller can scope its own lookup,
-   * e.g. by branch) and an addLines() helper that appends one or more rows
-   * to the line grid in one go (replacing the single still-empty starter row
+   * e.g. by branch), an addLines() helper that appends one or more rows to
+   * the line grid in one go (replacing the single still-empty starter row
    * if that's all that's there, so bulk-adding into a fresh form doesn't
-   * leave a stray blank line at the top).
+   * leave a stray blank line at the top), and a setHeaderFields() helper
+   * that patches one or more header values at once (e.g. a GRN's "Recall
+   * from PO" panel auto-filling vendor/branch/poId once a PO is picked).
    */
-  linesExtra?: (ctx: { header: Record<string, any>; lines: Record<string, any>[]; addLines: (rows: Record<string, any>[]) => void }) => any;
+  linesExtra?: (ctx: {
+    header: Record<string, any>;
+    lines: Record<string, any>[];
+    addLines: (rows: Record<string, any>[]) => void;
+    setHeaderFields: (patch: Record<string, any>) => void;
+  }) => any;
   /**
    * Renders a totals block (e.g. "PO Amount / Discount / Tax / Total incl.
    * VAT") directly under the Line Items grid, in both the create/edit form
@@ -483,6 +492,11 @@ export function DocumentScreen({
       const extra = onHeaderFieldChange?.(key, value, next);
       return extra ? { ...next, ...extra } : next;
     });
+  }
+
+  /** Bulk-patch several header fields at once (e.g. a "Recall from PO" panel setting vendor/branch/poId together once a PO is picked) - unlike setHeaderValue, this doesn't run onHeaderFieldChange, since the caller already knows exactly which fields it wants set. */
+  function setHeaderFields(patch: Record<string, any>) {
+    setHeader((prev) => ({ ...prev, ...patch }));
   }
 
   function addLine() {
@@ -670,7 +684,7 @@ export function DocumentScreen({
     // box below the lines) or a FOC-line toggle (redundant once the FOC Qty
     // column itself shows the free quantity).
     const printHeaderFields = headerFields.filter((f) => !f.hideInPrint);
-    const printLineFields = lineFields.filter((f) => !f.hideInPrint);
+    const printLineFields = lineFields.filter((f) => !f.hideInPrint && !f.hidden);
     const printLineCtx = { rows: record.lines ?? [], header: record };
 
     const sections = groupBySection(printHeaderFields);
@@ -856,7 +870,11 @@ export function DocumentScreen({
   const hasBaseQty = (detail?.lines ?? []).some((l: any) => l.baseQty != null);
   const hasNumericLine = lineFields.some((f) => f.type === "number");
   const docNo = detail && (detail.mrNo ?? detail.poNo ?? detail.grnNo ?? detail.transferNo ?? detail.adjustmentNo ?? detail.id);
-  const headerSections = groupBySection(headerFields);
+  const headerSections = groupBySection(headerFields.filter((f) => !f.hidden));
+  // Same "hidden" convention as headerFields - a lineField that carries data
+  // (e.g. poLineId from a "Recall from PO" panel) through to the saved
+  // payload without ever rendering its own grid column.
+  const visibleLineFields = lineFields.filter((f) => !f.hidden);
 
   return (
     <div className="mx-auto max-w-6xl">
@@ -1017,7 +1035,7 @@ export function DocumentScreen({
             })}
           </div>
 
-          {linesExtra?.({ header, lines, addLines })}
+          {linesExtra?.({ header, lines, addLines, setHeaderFields })}
 
           <div className="mb-5 rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
             <div className="mb-3 flex items-center justify-between border-b border-gray-100 pb-2">
@@ -1036,7 +1054,7 @@ export function DocumentScreen({
                 <thead>
                   <tr className="bg-gray-50">
                     <th className="w-8 border-b border-gray-200 px-2 py-2 text-left text-[11px] font-semibold uppercase tracking-wide text-gray-500">#</th>
-                    {lineFields.map((f) => (
+                    {visibleLineFields.map((f) => (
                       <th
                         key={f.key}
                         style={{ minWidth: lineColMinWidth(f) }}
@@ -1053,7 +1071,7 @@ export function DocumentScreen({
                     <Fragment key={i}>
                       <tr className={i % 2 === 1 ? "bg-gray-50/50" : ""}>
                         <td className="border-b border-gray-100 px-2 py-1.5 text-xs text-gray-400">{i + 1}</td>
-                        {lineFields.map((f) => (
+                        {visibleLineFields.map((f) => (
                           <td key={f.key} style={{ minWidth: lineColMinWidth(f) }} className="border-b border-l border-gray-100 px-2 py-1.5">
                             {renderFieldInput(f, line, (value) => setLineValue(i, f.key, value), f.optionsForRow?.(line), { rows: lines, header })}
                           </td>
@@ -1070,7 +1088,7 @@ export function DocumentScreen({
                       </tr>
                       {lineWarnings?.[i] && (
                         <tr>
-                          <td colSpan={lineFields.length + 2} className="border-b border-amber-100 bg-amber-50 px-3 py-1.5 text-xs text-amber-700">
+                          <td colSpan={visibleLineFields.length + 2} className="border-b border-amber-100 bg-amber-50 px-3 py-1.5 text-xs text-amber-700">
                             {lineWarnings[i]}
                           </td>
                         </tr>
@@ -1082,7 +1100,7 @@ export function DocumentScreen({
                   <tfoot>
                     <tr className="border-t-2 border-gray-200 bg-gray-50">
                       <td className="px-2 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-gray-500">Total</td>
-                      {lineFields.map((f) => (
+                      {visibleLineFields.map((f) => (
                         <td key={f.key} style={{ minWidth: lineColMinWidth(f) }} className="border-l border-gray-200 px-2 py-1.5 text-sm font-semibold text-navy-900">
                           {f.type === "number" ? sumNumericField(lines, f.key) : ""}
                         </td>
@@ -1256,7 +1274,7 @@ export function DocumentScreen({
                     <thead>
                       <tr className="bg-gray-50">
                         <th className="w-8 border-b border-gray-200 px-2 py-2 text-left text-[11px] font-semibold uppercase tracking-wide text-gray-500">#</th>
-                        {lineFields.map((f) => (
+                        {visibleLineFields.map((f) => (
                           <th
                             key={f.key}
                             style={{ minWidth: lineColMinWidth(f) }}
@@ -1276,7 +1294,7 @@ export function DocumentScreen({
                       {(detail.lines ?? []).map((line: any, i: number) => (
                         <tr key={line.id ?? i} className={i % 2 === 1 ? "bg-gray-50/50" : ""}>
                           <td className="border-b border-gray-100 px-2 py-1.5 text-xs text-gray-400">{i + 1}</td>
-                          {lineFields.map((f) => (
+                          {visibleLineFields.map((f) => (
                             <td key={f.key} style={{ minWidth: lineColMinWidth(f) }} className="border-b border-l border-gray-100 px-2 py-1.5 text-navy-900">
                               {resolveReadOnlyValue(f, line, { rows: detail.lines ?? [], header: detail })}
                             </td>
@@ -1295,7 +1313,7 @@ export function DocumentScreen({
                       <tfoot>
                         <tr className="border-t-2 border-gray-200 bg-gray-50">
                           <td className="px-2 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-gray-500">Total</td>
-                          {lineFields.map((f) => (
+                          {visibleLineFields.map((f) => (
                             <td key={f.key} style={{ minWidth: lineColMinWidth(f) }} className="border-l border-gray-200 px-2 py-1.5 text-sm font-semibold text-navy-900">
                               {f.type === "number" ? sumNumericField(detail.lines ?? [], f.key) : ""}
                             </td>

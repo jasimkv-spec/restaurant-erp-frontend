@@ -40,6 +40,7 @@ import {
   FolderTree,
   Award,
   Package,
+  PackageCheck,
   Wheat,
   UtensilsCrossed,
   Layers3,
@@ -131,6 +132,7 @@ const NAV: NavGroup[] = [
       { label: "MR Consolidation", path: "/procurement/mr-consolidation", icon: Boxes },
       { label: "RFQs", path: "/procurement/rfqs", icon: FileText },
       { label: "Purchase Orders", path: "/procurement/purchase-orders", icon: ShoppingCart },
+      { label: "Goods Receipt (GRN)", path: "/procurement/grns", icon: PackageCheck },
     ],
   },
   {
