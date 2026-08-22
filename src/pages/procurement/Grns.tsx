@@ -342,6 +342,17 @@ export default function Grns() {
   // Guarded there by header.poId === recalledPo.id so a stale value from a
   // cancelled/earlier create never gets shown against an unrelated one.
   const [recalledPo, setRecalledPo] = useState<any | null>(null);
+  // Drives the "Close PO / Keep PO Open" prompt shown when posting a GRN
+  // that only partially receives its linked PO (see the lifecycle post
+  // step's onConflict below) - window.confirm can't relabel its own OK/
+  // Cancel buttons, so this is a small custom modal instead. `resolve` is
+  // the pending lifecycle action's own promise callback; setting it back to
+  // null both closes the modal and (via onConflict awaiting that promise)
+  // lets the post request actually fire with the chosen disposition.
+  const [poDecisionPrompt, setPoDecisionPrompt] = useState<{
+    poNo?: string;
+    resolve: (choice: "close" | "keep-open") => void;
+  } | null>(null);
   const { user, activeCompanyScope } = useAuth();
   const allCompanyOptions = useOptions("/api/admin/companies", (c) => `${c.code} - ${c.name}`);
   const allBranchOptions = useOptions("/api/admin/branches", (b) => `${b.code} - ${b.name}`);
@@ -386,6 +397,7 @@ export default function Grns() {
     : allWarehouseOptions;
 
   return (
+    <>
     <DocumentScreen
       title="Goods Receipt (GRN)"
       description="Records what actually arrived from a vendor - against a Purchase Order, or received directly - and how much of it was accepted vs. rejected. Posting updates stock and books a provisional accrual to Finance."
@@ -590,12 +602,10 @@ export default function Grns() {
           // close it early, then retries the post with that choice.
           onConflict: async (details) => {
             if (!details?.requiresPoDecision) return null;
-            const closeNow = window.confirm(
-              `This GRN doesn't fully receive Purchase Order ${details.poNo ?? ""}.\n\n` +
-                `Click OK to CLOSE the PO now (no further deliveries expected).\n` +
-                `Click Cancel to KEEP the PO open (Partially Received) so more GRNs can be raised against it later.`
-            );
-            return { poDisposition: closeNow ? "close" : "keep-open" };
+            const choice = await new Promise<"close" | "keep-open">((resolve) => {
+              setPoDecisionPrompt({ poNo: details.poNo, resolve });
+            });
+            return { poDisposition: choice };
           },
         },
       ]}
@@ -609,5 +619,39 @@ export default function Grns() {
         },
       ]}
     />
+    {poDecisionPrompt && (
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
+        <div className="w-full max-w-md rounded-xl bg-white p-6 shadow-xl">
+          <h3 className="text-base font-semibold text-gray-900">Partial receipt against {poDecisionPrompt.poNo ?? "this Purchase Order"}</h3>
+          <p className="mt-2 text-sm text-gray-600">
+            This GRN doesn't fully receive {poDecisionPrompt.poNo ?? "its linked Purchase Order"}. Do you want to close the
+            PO now, or keep it open so more GRNs can be raised against the remaining items later?
+          </p>
+          <div className="mt-5 flex justify-end gap-3">
+            <button
+              type="button"
+              className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50"
+              onClick={() => {
+                poDecisionPrompt.resolve("keep-open");
+                setPoDecisionPrompt(null);
+              }}
+            >
+              Keep PO Open
+            </button>
+            <button
+              type="button"
+              className="rounded-lg bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700"
+              onClick={() => {
+                poDecisionPrompt.resolve("close");
+                setPoDecisionPrompt(null);
+              }}
+            >
+              Close PO
+            </button>
+          </div>
+        </div>
+      </div>
+    )}
+    </>
   );
 }
