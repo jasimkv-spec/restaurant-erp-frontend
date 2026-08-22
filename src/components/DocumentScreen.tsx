@@ -125,7 +125,9 @@ const STATUS_STYLES: Record<string, string> = {
   Draft: "bg-gray-100 text-gray-700 border-gray-200",
   Submitted: "bg-amber-50 text-amber-700 border-amber-200",
   Approved: "bg-emerald-50 text-emerald-700 border-emerald-200",
+  "Partially Received": "bg-amber-50 text-amber-700 border-amber-200",
   Posted: "bg-brand-50 text-brand-700 border-brand-200",
+  Closed: "bg-gray-100 text-gray-700 border-gray-300",
   Rejected: "bg-red-50 text-red-700 border-red-200",
   Cancelled: "bg-gray-100 text-gray-500 border-gray-200",
 };
