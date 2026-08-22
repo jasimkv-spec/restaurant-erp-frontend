@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useLocation } from "react-router-dom";
 import { DocumentScreen } from "../../components/DocumentScreen";
 import { SearchableSelect } from "../../components/SearchableSelect";
 import { useOptions } from "../../lib/useOptions";
@@ -36,10 +37,18 @@ function GrnPickerPanel({
   header,
   lines,
   addLines,
+  setHeaderFields,
+  autoRecallId,
+  onAutoRecallHandled,
 }: {
   header: Record<string, any>;
   lines: Record<string, any>[];
   addLines: (rows: Record<string, any>[]) => void;
+  setHeaderFields: (patch: Record<string, any>) => void;
+  /** Auto-pull this one GRN in as soon as it's confirmed not already invoiced - set when this screen was opened via a Posted GRN's "Create Purchase Invoice" button (see Grns.tsx's convertActions). Also auto-fills the Vendor header field from the GRN's own vendor, since normally the vendor has to be picked first before any GRN shows up in the dropdown at all. */
+  autoRecallId?: string;
+  /** Fires once the auto-recall attempt above has resolved - lets the parent screen clear its own seed id, so a later manual "+ New" (a freshly-mounted panel instance) doesn't repeat the same auto-pull. */
+  onAutoRecallHandled?: () => void;
 }) {
   const [pool, setPool] = useState<GrnPoolEntry[]>([]);
   const [alreadyInvoiced, setAlreadyInvoiced] = useState<Set<string>>(new Set());
@@ -47,6 +56,7 @@ function GrnPickerPanel({
   const [pulling, setPulling] = useState(false);
   const [selectedGrnId, setSelectedGrnId] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [autoFired, setAutoFired] = useState(false);
 
   useEffect(() => {
     Promise.all([
@@ -73,6 +83,18 @@ function GrnPickerPanel({
       })
       .finally(() => setLoading(false));
   }, []);
+
+  useEffect(() => {
+    if (loading || !autoRecallId || autoFired) return;
+    setAutoFired(true);
+    onAutoRecallHandled?.();
+    if (alreadyInvoiced.has(autoRecallId)) {
+      setError("This GRN has already been linked to another purchase invoice.");
+    } else {
+      pick(autoRecallId);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loading, autoRecallId, autoFired]);
 
   const selectedGrnIds = new Set(lines.map((l) => l.grnId).filter(Boolean));
   const availablePool = pool.filter(
@@ -125,6 +147,11 @@ function GrnPickerPanel({
         return;
       }
       addLines(rows);
+      // Harmless when picked manually (the dropdown already only offers
+      // GRNs for the currently-selected vendor, so this is a no-op then) -
+      // but required when auto-recalling straight from a GRN's own "Create
+      // Purchase Invoice" button, where no vendor has been chosen yet.
+      setHeaderFields({ vendorId: grn.vendorId });
       setSelectedGrnId("");
     } catch (err) {
       setError("Could not load that GRN's lines - please try again.");
@@ -273,6 +300,12 @@ function AdditionalCostsPanel({
  * ordered and received, not just as a single aggregate figure.
  */
 export default function PurchaseInvoices() {
+  const location = useLocation();
+  // Set when this screen was opened via a Posted GRN's "Create Purchase
+  // Invoice" button (see Grns.tsx's convertActions) - pulls that one GRN's
+  // lines (and its vendor) straight into a fresh form (see GrnPickerPanel's
+  // autoRecallId handling below).
+  const [seedGrnId, setSeedGrnId] = useState<string | undefined>((location.state as any)?.grnId);
   const vendorOptions = useOptions("/api/procurement/vendors", (v) => `${v.code} - ${v.name}`);
   const costTypeOptions = useOptions("/api/procurement/additional-cost-types", (t) => `${t.code} - ${t.name}`);
 
@@ -316,6 +349,7 @@ export default function PurchaseInvoices() {
         // straight through to the saved payload (see DocFieldConfig.hidden).
         { key: "additionalCosts", label: "Additional Costs", type: "text", hidden: true },
       ]}
+      autoOpenCreate={!!seedGrnId}
       linesExtra={({ header, lines, addLines, setHeaderFields }) => {
         const linesValue = lines.reduce((sum: number, l: any) => sum + Number(l.lineTotal || 0), 0);
         const invoiceCosts = (header.additionalCosts ?? []).reduce((s: number, c: any) => s + Number(c.amount), 0);
@@ -325,7 +359,14 @@ export default function PurchaseInvoices() {
         const withinRoughTolerance = Math.abs(variance) <= 2;
         return (
           <>
-            <GrnPickerPanel header={header} lines={lines} addLines={addLines} />
+            <GrnPickerPanel
+              header={header}
+              lines={lines}
+              addLines={addLines}
+              setHeaderFields={setHeaderFields}
+              autoRecallId={seedGrnId}
+              onAutoRecallHandled={() => setSeedGrnId(undefined)}
+            />
             <AdditionalCostsPanel header={header} setHeaderFields={setHeaderFields} costTypeOptions={costTypeOptions} />
             {(lines.length > 0 || invoiceCosts > 0) && (
               <div

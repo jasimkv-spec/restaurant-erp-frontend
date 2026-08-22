@@ -1,5 +1,5 @@
 import { Fragment, useEffect, useState } from "react";
-import { ArrowLeft, Check, FileSpreadsheet, Pencil, Plus, Printer, Trash2 } from "lucide-react";
+import { ArrowLeft, ArrowRight, Check, FileSpreadsheet, Pencil, Plus, Printer, Trash2 } from "lucide-react";
 import { api, ApiError, type ListResponse } from "../lib/apiClient";
 import { FIELD_CLASS } from "./CrudTable";
 import { SearchableSelect } from "./SearchableSelect";
@@ -86,6 +86,26 @@ export interface LifecycleStep {
   label: string;
   /** Optional extra confirm text shown before firing. */
   confirmMessage?: string;
+}
+
+/**
+ * A "jump forward" shortcut in the detail view (e.g. an Approved MR's
+ * "Create Purchase Order" button, a Posted GRN's "Create Purchase Invoice"
+ * button) - offered only while the open record's own status is one of
+ * fromStatuses. Deliberately just a callback the caller supplies (usually a
+ * react-router navigate() to the target screen's route, with the source
+ * record's id passed as router state) rather than anything DocumentScreen
+ * itself knows how to route to, since this component has no router
+ * dependency of its own. The target screen then reads that state itself
+ * (see the `autoOpenCreate` prop + a picker panel's own `autoRecallId`) to
+ * open straight into a prefilled create form instead of the user having to
+ * find and re-select the same source document a second time.
+ */
+export interface ConvertAction {
+  label: string;
+  /** Only shown while the open record's status is one of these. */
+  fromStatuses: string[];
+  onClick: (detail: any) => void;
 }
 
 const STATUS_STYLES: Record<string, string> = {
@@ -296,6 +316,8 @@ export function DocumentScreen({
   summary,
   printSummaryRows,
   printTerms,
+  convertActions,
+  autoOpenCreate,
 }: {
   title: string;
   description: string;
@@ -380,6 +402,19 @@ export function DocumentScreen({
    * doesn't carry T&Cs at all).
    */
   printTerms?: (record: any) => string | null | undefined;
+  /** "Create X from this document" shortcuts (e.g. an Approved MR's "Create Purchase Order" button) shown in the detail view's action row, next to the lifecycle buttons - see ConvertAction. Omit for a document type with nothing downstream to convert into. */
+  convertActions?: ConvertAction[];
+  /**
+   * When true, opens straight into a blank create form the moment this
+   * screen mounts, instead of the usual list view - used by a screen
+   * that's just been navigated to via a ConvertAction's onClick (e.g.
+   * landing on Purchase Orders after clicking "Create Purchase Order" on
+   * an Approved MR). The caller computes this from its own router state
+   * (e.g. `!!location.state?.mrId`) - DocumentScreen has no router
+   * dependency of its own, it just knows whether to auto-open or not.
+   * Only evaluated once, on mount.
+   */
+  autoOpenCreate?: boolean;
 }) {
   const [view, setView] = useState<"list" | "form" | "detail">("list");
   const [rows, setRows] = useState<any[]>([]);
@@ -424,6 +459,14 @@ export function DocumentScreen({
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [basePath]);
+
+  useEffect(() => {
+    if (autoOpenCreate) openCreate();
+    // Mount-once: fires only when this screen first loads via a
+    // ConvertAction navigation, not on every re-render while the flag
+    // happens to still be true.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   function fieldInputValue(row: Record<string, any>, f: DocFieldConfig) {
     const v = row[f.key];
@@ -1165,6 +1208,18 @@ export function DocumentScreen({
                         className="rounded-lg bg-brand-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-brand-700 disabled:opacity-50"
                       >
                         {actionBusy === step.action ? "..." : step.label}
+                      </button>
+                    ))}
+                  {convertActions
+                    ?.filter((step) => step.fromStatuses.includes(detail[statusField]))
+                    .map((step) => (
+                      <button
+                        key={step.label}
+                        onClick={() => step.onClick(detail)}
+                        className="flex items-center gap-1.5 rounded-lg border border-emerald-300 bg-emerald-50 px-4 py-2 text-sm font-semibold text-emerald-700 shadow-sm hover:bg-emerald-100"
+                      >
+                        {step.label}
+                        <ArrowRight size={14} />
                       </button>
                     ))}
                   <button

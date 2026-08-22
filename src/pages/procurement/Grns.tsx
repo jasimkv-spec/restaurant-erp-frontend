@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { DocumentScreen } from "../../components/DocumentScreen";
 import { SearchableSelect } from "../../components/SearchableSelect";
 import { useOptions } from "../../lib/useOptions";
@@ -153,10 +154,16 @@ function PoPoolPanel({
   header,
   addLines,
   setHeaderFields,
+  autoRecallId,
+  onAutoRecallHandled,
 }: {
   header: Record<string, any>;
   addLines: (rows: Record<string, any>[]) => void;
   setHeaderFields: (patch: Record<string, any>) => void;
+  /** Auto-pull this one PO in as soon as the pool has loaded - set when this screen was opened via a PO detail view's "Create GRN" button (see PurchaseOrders.tsx's convertActions). Falls back to a normal manual pick if the id isn't (or is no longer) Approved/Partially Received. */
+  autoRecallId?: string;
+  /** Fires once the auto-recall attempt above has resolved - lets the parent screen clear its own seed id, so a later manual "+ New" (a freshly-mounted panel instance) doesn't repeat the same auto-pull. */
+  onAutoRecallHandled?: () => void;
 }) {
   const [pool, setPool] = useState<AvailablePo[]>([]);
   const [loading, setLoading] = useState(true);
@@ -164,6 +171,7 @@ function PoPoolPanel({
   const [recalling, setRecalling] = useState(false);
   const [lastRecalled, setLastRecalled] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [autoFired, setAutoFired] = useState(false);
 
   useEffect(() => {
     setLoading(true);
@@ -185,6 +193,18 @@ function PoPoolPanel({
       })
       .finally(() => setLoading(false));
   }, []);
+
+  useEffect(() => {
+    if (loading || !autoRecallId || autoFired) return;
+    setAutoFired(true);
+    onAutoRecallHandled?.();
+    if (pool.some((po) => po.id === autoRecallId)) {
+      recallSelected(autoRecallId);
+    } else {
+      setError("This purchase order isn't available to receive against anymore - it may already be fully received, or no longer Approved.");
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loading, autoRecallId, autoFired]);
 
   const poOptions = pool.map((po) => ({
     value: po.id,
@@ -272,6 +292,13 @@ function PoPoolPanel({
  * rule as Material Requests and Purchase Orders (see assertCanApprove).
  */
 export default function Grns() {
+  const navigate = useNavigate();
+  const location = useLocation();
+  // Set when this screen was opened via an Approved/Partially Received PO's
+  // "Create GRN" button (see PurchaseOrders.tsx's convertActions) - pulls
+  // that one PO's outstanding lines straight into a fresh form (see
+  // PoPoolPanel's autoRecallId handling below).
+  const [seedPoId, setSeedPoId] = useState<string | undefined>((location.state as any)?.poId);
   const { user, activeCompanyScope } = useAuth();
   const allCompanyOptions = useOptions("/api/admin/companies", (c) => `${c.code} - ${c.name}`);
   const allBranchOptions = useOptions("/api/admin/branches", (b) => `${b.code} - ${b.name}`);
@@ -389,9 +416,24 @@ export default function Grns() {
         // straight through to the saved payload (see DocFieldConfig.hidden).
         { key: "additionalCosts", label: "Additional Costs", type: "text", hidden: true },
       ]}
+      autoOpenCreate={!!seedPoId}
       linesExtra={({ header, addLines, setHeaderFields }) => (
         <>
-          <PoPoolPanel header={header} addLines={addLines} setHeaderFields={setHeaderFields} />
+          <div className="mb-5 rounded-xl border border-sky-100 bg-sky-50/50 p-3 text-[12px] text-sky-800 shadow-sm">
+            Recording the supplier's own invoice (invoice no., invoice date, received date, amount)? That's done on
+            the{" "}
+            <Link to="/procurement/purchase-invoices" className="font-semibold underline hover:text-sky-900">
+              Purchase Invoices
+            </Link>{" "}
+            screen, once this GRN is Posted - not here. This GRN only records what physically arrived.
+          </div>
+          <PoPoolPanel
+            header={header}
+            addLines={addLines}
+            setHeaderFields={setHeaderFields}
+            autoRecallId={seedPoId}
+            onAutoRecallHandled={() => setSeedPoId(undefined)}
+          />
           <AdditionalCostsPanel header={header} setHeaderFields={setHeaderFields} costTypeOptions={costTypeOptions} />
         </>
       )}
@@ -435,6 +477,13 @@ export default function Grns() {
       ]}
       statusFlow={["Draft", "Posted"]}
       attachmentsModuleCode="Procurement.Grn"
+      convertActions={[
+        {
+          label: "Create Purchase Invoice",
+          fromStatuses: ["Posted"],
+          onClick: (rec) => navigate("/procurement/purchase-invoices", { state: { grnId: rec.id } }),
+        },
+      ]}
     />
   );
 }

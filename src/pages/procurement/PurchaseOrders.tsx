@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
 import { DocumentScreen } from "../../components/DocumentScreen";
 import { SearchableSelect } from "../../components/SearchableSelect";
 import { useOptions } from "../../lib/useOptions";
@@ -57,9 +58,15 @@ const YES_NO = [
 function MrPoolPanel({
   header,
   addLines,
+  autoRecallId,
+  onAutoRecallHandled,
 }: {
   header: Record<string, any>;
   addLines: (rows: Record<string, any>[]) => void;
+  /** Auto-pull this one MR in as soon as the pool has loaded - set when this screen was opened via the MR detail view's "Create Purchase Order" button (see PurchaseOrders' own autoOpenCreate/useLocation wiring), so the user doesn't have to find and re-pick the same MR they just came from. Silently falls back to a normal manual pick if the id isn't (or is no longer) in the pool - e.g. it was already converted by someone else in the meantime. */
+  autoRecallId?: string;
+  /** Fires once the auto-recall attempt above has resolved (whether it succeeded or the MR was no longer available) - lets the parent screen clear its own seed id, so if the user cancels this form and clicks "+ New" again for an unrelated PO, a freshly-mounted panel instance doesn't repeat the same auto-pull a second time. */
+  onAutoRecallHandled?: () => void;
 }) {
   const [pool, setPool] = useState<AvailableMr[]>([]);
   const [loading, setLoading] = useState(true);
@@ -67,6 +74,7 @@ function MrPoolPanel({
   const [recalling, setRecalling] = useState(false);
   const [lastRecalled, setLastRecalled] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [autoFired, setAutoFired] = useState(false);
 
   function loadPool() {
     setLoading(true);
@@ -79,6 +87,18 @@ function MrPoolPanel({
   useEffect(() => {
     loadPool();
   }, []);
+
+  useEffect(() => {
+    if (loading || !autoRecallId || autoFired) return;
+    setAutoFired(true);
+    onAutoRecallHandled?.();
+    if (pool.some((m) => m.mrId === autoRecallId)) {
+      recallSelected(autoRecallId);
+    } else {
+      setError("This material request isn't available to pull in anymore - it may already be linked to another purchase order.");
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loading, autoRecallId, autoFired]);
 
   const visiblePool = header.branchId ? pool.filter((m) => m.branchId === header.branchId) : pool;
   const mrOptions = visiblePool.map((m) => ({
@@ -152,6 +172,15 @@ function MrPoolPanel({
  * lines straight out of the Approved MR pool via the panel above the grid).
  */
 export default function PurchaseOrders() {
+  const navigate = useNavigate();
+  const location = useLocation();
+  // Set when this screen was opened via an Approved MR's "Create Purchase
+  // Order" button (see MaterialRequests.tsx's convertActions) - pulls that
+  // one MR straight into a fresh form instead of the user having to find
+  // and re-pick it themselves in the panel below. Read once at mount; the
+  // MR pool itself still guards against pulling in an MR that's already
+  // been used elsewhere (see MrPoolPanel's autoRecallId handling).
+  const [seedMrId, setSeedMrId] = useState<string | undefined>((location.state as any)?.mrId);
   const { user, activeCompanyScope } = useAuth();
   const allCompanyOptions = useOptions("/api/admin/companies", (c) => `${c.code} - ${c.name}`);
   const allBranchOptions = useOptions("/api/admin/branches", (b) => `${b.code} - ${b.name}`);
@@ -424,7 +453,15 @@ export default function PurchaseOrders() {
         { key: "shippingTerms", label: "Ship Terms", type: "text", placeholder: "e.g. FOB, CIF...", section: "Logistics" },
         { key: "deliveryInstructions", label: "Delivery Note", type: "textarea", section: "Logistics" },
       ]}
-      linesExtra={({ header, addLines }) => <MrPoolPanel header={header} addLines={addLines} />}
+      autoOpenCreate={!!seedMrId}
+      linesExtra={({ header, addLines }) => (
+        <MrPoolPanel
+          header={header}
+          addLines={addLines}
+          autoRecallId={seedMrId}
+          onAutoRecallHandled={() => setSeedMrId(undefined)}
+        />
+      )}
       lineFields={[
         { key: "itemId", label: "Item", type: "select", required: true, options: itemOptions },
         { key: "instructions", label: "Instruction", type: "text" },
@@ -562,6 +599,16 @@ export default function PurchaseOrders() {
       ]}
       statusFlow={["Draft", "Submitted", "Approved"]}
       attachmentsModuleCode="Procurement.PurchaseOrder"
+      convertActions={[
+        {
+          label: "Create GRN",
+          // A PO can be received against more than once (Partially
+          // Received), so this stays offered until the PO is fully
+          // received - not just on its first receipt.
+          fromStatuses: ["Approved", "Partially Received"],
+          onClick: (rec) => navigate("/procurement/grns", { state: { poId: rec.id } }),
+        },
+      ]}
     />
   );
 }

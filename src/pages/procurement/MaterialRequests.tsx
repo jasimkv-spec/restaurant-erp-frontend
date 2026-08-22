@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { DocumentScreen, PriorityBadge } from "../../components/DocumentScreen";
 import { useOptions } from "../../lib/useOptions";
 import { useAuth } from "../../context/AuthContext";
@@ -45,6 +46,7 @@ function resolveQtyClient(
 }
 
 export default function MaterialRequests() {
+  const navigate = useNavigate();
   const { user, activeCompanyScope } = useAuth();
   const allCompanyOptions = useOptions("/api/admin/companies", (c) => `${c.code} - ${c.name}`);
   const allBranchOptions = useOptions("/api/admin/branches", (b) => `${b.code} - ${b.name}`);
@@ -351,6 +353,13 @@ export default function MaterialRequests() {
       ]}
       statusFlow={["Draft", "Submitted", "Approved"]}
       attachmentsModuleCode="Procurement.MaterialRequest"
+      convertActions={[
+        {
+          label: "Create Purchase Order",
+          fromStatuses: ["Approved"],
+          onClick: (rec) => navigate("/procurement/purchase-orders", { state: { mrId: rec.id } }),
+        },
+      ]}
     />
   );
 }
