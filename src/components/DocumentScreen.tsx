@@ -292,6 +292,7 @@ export function DocumentScreen({
   linesExtra,
   summary,
   printSummaryRows,
+  printTerms,
 }: {
   title: string;
   description: string;
@@ -356,6 +357,17 @@ export function DocumentScreen({
    * that doesn't need a totals summary on its printout.
    */
   printSummaryRows?: (record: any) => { label: string; value: string; emphasize?: boolean }[];
+  /**
+   * Standing Terms & Conditions text printed near the bottom of the
+   * document (after the totals box, before the company's generic footer
+   * note) - given the full fetched record so the caller can pull it from
+   * wherever it's configured, e.g. Purchase Orders reads
+   * record.branch?.company?.poTermsConditions, so it's configurable per
+   * company/client via Setup > Companies. Return null/undefined to print
+   * nothing (e.g. that company hasn't set any yet, or this document type
+   * doesn't carry T&Cs at all).
+   */
+  printTerms?: (record: any) => string | null | undefined;
 }) {
   const [view, setView] = useState<"list" | "form" | "detail">("list");
   const [rows, setRows] = useState<any[]>([]);
@@ -731,8 +743,19 @@ export function DocumentScreen({
     const headerNote = company?.transactionHeaderText
       ? `<div style="margin-bottom:12px;padding:8px 10px;background:#f9fafb;border:1px solid #eee;border-radius:6px;font-size:11px;color:#555;white-space:pre-wrap;">${escapeHtml(company.transactionHeaderText)}</div>`
       : "";
+    // Standing Terms & Conditions (e.g. Company.poTermsConditions) - a
+    // titled box of its own rather than folded into the generic footer
+    // note, since it's substantive per-document-type text the caller opted
+    // into via printTerms, not a one-line boilerplate footer.
+    const termsText = printTerms?.(record);
+    const termsBox = termsText
+      ? `<div style="margin-top:18px;padding:10px 12px;border:1px solid #eee;border-radius:6px;">
+          <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.03em;color:#666;margin-bottom:4px;">Terms &amp; Conditions</div>
+          <div style="font-size:11px;color:#333;white-space:pre-wrap;">${escapeHtml(termsText)}</div>
+        </div>`
+      : "";
     const footerNote = company?.transactionFooterText
-      ? `<div style="margin-top:28px;padding-top:10px;border-top:1px solid #ddd;font-size:11px;color:#555;white-space:pre-wrap;">${escapeHtml(company.transactionFooterText)}</div>`
+      ? `<div style="margin-top:${termsBox ? "12" : "28"}px;padding-top:10px;border-top:1px solid #ddd;font-size:11px;color:#555;white-space:pre-wrap;">${escapeHtml(company.transactionFooterText)}</div>`
       : "";
 
     win.document.write(`
@@ -757,6 +780,7 @@ export function DocumentScreen({
           <table style="width:100%;"><tbody><tr>${sectionPanels}</tr></tbody></table>
           <table class="lines"><thead><tr>${lineHeaderCells}</tr></thead><tbody>${lineBodyRows}${totalsRow}</tbody></table>
           ${summaryBox}
+          ${termsBox}
           ${footerNote}
           <div class="printed-on">Printed on ${new Date().toLocaleString()}</div>
         </body>

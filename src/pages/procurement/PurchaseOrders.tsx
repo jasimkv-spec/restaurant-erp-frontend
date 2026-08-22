@@ -583,6 +583,10 @@ export default function PurchaseOrders() {
           { label: "Total (incl. VAT)", value: `${total.toFixed(2)}${ccy}`, emphasize: true },
         ];
       }}
+      // Configured per company via Setup > Companies ("PO Terms & Conditions") -
+      // each client/tenant can set their own standing wording. Only wired up
+      // here, not on Material Requests.
+      printTerms={(record) => record.branch?.company?.poTermsConditions ?? null}
       lifecycle={[
         { fromStatus: "Draft", action: "submit", label: "Submit for Approval" },
         { fromStatus: "Submitted", action: "approve", label: "Approve", confirmMessage: "Approve this purchase order?" },

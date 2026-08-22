@@ -74,6 +74,12 @@ export default function Companies() {
           type: "textarea",
           placeholder: "Shown at the bottom of every printed transaction for this company (e.g. terms, signature block)",
         },
+        {
+          key: "poTermsConditions",
+          label: "PO Terms & Conditions",
+          type: "textarea",
+          placeholder: "Standing terms & conditions printed on every Purchase Order for this company (payment terms, delivery/inspection terms, penalties, etc.)",
+        },
       ]}
     />
   );
