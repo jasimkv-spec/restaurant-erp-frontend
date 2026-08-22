@@ -45,6 +45,7 @@ import PriceGroups from "./pages/products/PriceGroups";
 import ItemTypes from "./pages/products/ItemTypes";
 import Users from "./pages/security/Users";
 import Roles from "./pages/security/Roles";
+import PlatformAdmin from "./pages/platform/PlatformAdmin";
 
 function ChooseCompanyGate() {
   const { isAuthenticated } = useAuth();
@@ -119,6 +120,11 @@ export default function App() {
 
           <Route path="/security/users" element={<RequireAuth><Users /></RequireAuth>} />
           <Route path="/security/roles" element={<RequireAuth><Roles /></RequireAuth>} />
+
+          {/* Its own independent login/session (see PlatformAdmin.tsx) -
+              deliberately NOT wrapped in RequireAuth, which is scoped to the
+              regular tenant-based app session. */}
+          <Route path="/platform" element={<PlatformAdmin />} />
 
           <Route path="/" element={<Navigate to="/setup/companies" replace />} />
           <Route path="*" element={<Navigate to="/setup/companies" replace />} />
