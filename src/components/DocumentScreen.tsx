@@ -726,7 +726,18 @@ export function DocumentScreen({
     // row (printRow), so relying on them there would silently drop the base-unit column.
     const recHasBaseQty = (record.lines ?? []).some((l: any) => l.baseQty != null);
     const recHasNumericLine = lineFields.some((f) => f.type === "number");
-    const recDocNo = record.mrNo ?? record.poNo ?? record.grnNo ?? record.transferNo ?? record.adjustmentNo ?? record.id;
+    const recDocNo =
+      record.mrNo ??
+      record.poNo ??
+      record.grnNo ??
+      record.rfqNo ??
+      record.invoiceNo ??
+      record.paymentNo ??
+      record.debitNoteNo ??
+      record.returnNo ??
+      record.transferNo ??
+      record.adjustmentNo ??
+      record.id;
     const company = record.branch?.company;
 
     const escapeHtml = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
@@ -949,7 +960,19 @@ export function DocumentScreen({
 
   const hasBaseQty = (detail?.lines ?? []).some((l: any) => l.baseQty != null);
   const hasNumericLine = lineFields.some((f) => f.type === "number");
-  const docNo = detail && (detail.mrNo ?? detail.poNo ?? detail.grnNo ?? detail.transferNo ?? detail.adjustmentNo ?? detail.id);
+  const docNo =
+    detail &&
+    (detail.mrNo ??
+      detail.poNo ??
+      detail.grnNo ??
+      detail.rfqNo ??
+      detail.invoiceNo ??
+      detail.paymentNo ??
+      detail.debitNoteNo ??
+      detail.returnNo ??
+      detail.transferNo ??
+      detail.adjustmentNo ??
+      detail.id);
   const headerSections = groupBySection(headerFields.filter((f) => !f.hidden));
   // Same "hidden" convention as headerFields - a lineField that carries data
   // (e.g. poLineId from a "Recall from PO" panel) through to the saved

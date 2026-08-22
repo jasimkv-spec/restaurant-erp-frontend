@@ -233,16 +233,25 @@ export default function PurchaseOrders() {
     });
   }, []);
 
+  // A candidate Unit is only offered if it's the item's own base UOM, or a
+  // conversion (item-specific or generic) directly connects it to that base
+  // UOM - matching exactly what resolveUomQty (src/utils/uomConversion.ts)
+  // can actually resolve later at save time (a single forward-or-reverse
+  // hop against the item's base UOM, never a chain of hops through some
+  // other unit). Previously this pulled in the fromUomId/toUomId of *every*
+  // generic conversion regardless of whether it had anything to do with
+  // this item's base UOM - so a GR-based item would incorrectly offer LTR
+  // just because some unrelated LTR<->ML conversion existed in the system.
   function uomOptionsForItem(itemId: string) {
     if (!itemId) return [];
-    const ids = new Set<string>();
     const base = itemsIndex[itemId]?.baseUomId;
-    if (base) ids.add(base);
+    const ids = new Set<string>();
+    if (!base) return [];
+    ids.add(base);
     for (const c of allConversions) {
-      if (c.itemId === itemId || c.itemId === null) {
-        ids.add(c.fromUomId);
-        ids.add(c.toUomId);
-      }
+      if (c.itemId !== itemId && c.itemId !== null) continue;
+      if (c.fromUomId === base) ids.add(c.toUomId);
+      else if (c.toUomId === base) ids.add(c.fromUomId);
     }
     return Array.from(ids).map((id) => ({ value: id, label: uomLabelById[id] ?? id }));
   }
