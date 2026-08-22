@@ -180,6 +180,7 @@ function PoPoolPanel({
   setHeaderFields,
   autoRecallId,
   onAutoRecallHandled,
+  onPoLoaded,
 }: {
   header: Record<string, any>;
   addLines: (rows: Record<string, any>[]) => void;
