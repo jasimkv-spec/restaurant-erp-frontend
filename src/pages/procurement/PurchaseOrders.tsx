@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { DocumentScreen } from "../../components/DocumentScreen";
+import { RelatedDocuments } from "../../components/RelatedDocuments";
 import { SearchableSelect } from "../../components/SearchableSelect";
 import { useOptions } from "../../lib/useOptions";
 import { useAuth } from "../../context/AuthContext";
@@ -463,6 +464,30 @@ export default function PurchaseOrders() {
         { key: "deliveryInstructions", label: "Delivery Note", type: "textarea", section: "Logistics" },
       ]}
       autoOpenCreate={!!seedMrId}
+      autoOpenDetailId={(location.state as any)?.openId}
+      relatedDocuments={(detail) => {
+        const mrIds = new Set<string>();
+        const mrItems = (detail.lines ?? [])
+          .map((l: any) => l.sourceMr)
+          .filter((mr: any) => mr && !mrIds.has(mr.id) && mrIds.add(mr.id))
+          .map((mr: any) => ({ id: mr.id, label: mr.mrNo, to: "/procurement/material-requests" }));
+        const grnItems = (detail.grns ?? []).map((g: any) => ({ id: g.id, label: g.grnNo, to: "/procurement/grns", status: g.status }));
+        const piIds = new Set<string>();
+        const piItems = (detail.grns ?? [])
+          .flatMap((g: any) => g.purchaseInvoices ?? [])
+          .map((bridge: any) => bridge.purchaseInvoice)
+          .filter((pi: any) => pi && !piIds.has(pi.id) && piIds.add(pi.id))
+          .map((pi: any) => ({ id: pi.id, label: pi.piNo ?? pi.invoiceNo, to: "/procurement/purchase-invoices", status: pi.postingStatus }));
+        return (
+          <RelatedDocuments
+            groups={[
+              { label: "Source Material Requests", items: mrItems },
+              { label: "GRNs", items: grnItems },
+              { label: "Purchase Invoices", items: piItems },
+            ]}
+          />
+        );
+      }}
       linesExtra={({ header, addLines }) => (
         <MrPoolPanel
           header={header}

@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import { DocumentScreen, PriorityBadge } from "../../components/DocumentScreen";
+import { RelatedDocuments } from "../../components/RelatedDocuments";
 import { useOptions } from "../../lib/useOptions";
 import { useAuth } from "../../context/AuthContext";
 import { api, hasPermission, type ListResponse } from "../../lib/apiClient";
@@ -47,6 +48,7 @@ function resolveQtyClient(
 
 export default function MaterialRequests() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { user, activeCompanyScope } = useAuth();
   const allCompanyOptions = useOptions("/api/admin/companies", (c) => `${c.code} - ${c.name}`);
   const allBranchOptions = useOptions("/api/admin/branches", (b) => `${b.code} - ${b.name}`);
@@ -238,6 +240,22 @@ export default function MaterialRequests() {
         checkDuplicate(value, index, editingId);
       }}
       lineWarnings={lineWarnings}
+      autoOpenDetailId={(location.state as any)?.openId}
+      relatedDocuments={(detail) => (
+        <RelatedDocuments
+          groups={[
+            {
+              label: "Purchase Orders",
+              items: (detail.relatedPurchaseOrders ?? []).map((po: any) => ({
+                id: po.id,
+                label: po.poNo,
+                to: "/procurement/purchase-orders",
+                status: po.status,
+              })),
+            },
+          ]}
+        />
+      )}
       searchAccessor={(r) => `${r.mrNo ?? ""} ${r.title ?? ""}`.toLowerCase()}
       searchPlaceholder="Search MR No. or title..."
       filters={[

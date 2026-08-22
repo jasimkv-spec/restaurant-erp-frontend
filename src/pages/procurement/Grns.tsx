@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { DocumentScreen } from "../../components/DocumentScreen";
+import { RelatedDocuments } from "../../components/RelatedDocuments";
 import { SearchableSelect } from "../../components/SearchableSelect";
 import { useOptions } from "../../lib/useOptions";
 import { useAuth } from "../../context/AuthContext";
@@ -499,6 +500,23 @@ export default function Grns() {
         { key: "additionalCosts", label: "Additional Costs", type: "text", hidden: true },
       ]}
       autoOpenCreate={!!seedPoId}
+      autoOpenDetailId={(location.state as any)?.openId}
+      relatedDocuments={(detail) => (
+        <RelatedDocuments
+          groups={[
+            { label: "Source Purchase Order", items: detail.po ? [{ id: detail.po.id, label: detail.po.poNo, to: "/procurement/purchase-orders", status: detail.po.status }] : [] },
+            {
+              label: "Purchase Invoices",
+              items: (detail.purchaseInvoices ?? []).map((bridge: any) => ({
+                id: bridge.purchaseInvoice.id,
+                label: bridge.purchaseInvoice.piNo ?? bridge.purchaseInvoice.invoiceNo,
+                to: "/procurement/purchase-invoices",
+                status: bridge.purchaseInvoice.postingStatus,
+              })),
+            },
+          ]}
+        />
+      )}
       linesExtra={({ header, addLines, setHeaderFields }) => (
         <>
           <div className="mb-5 rounded-xl border border-sky-100 bg-sky-50/50 p-3 text-[12px] text-sky-800 shadow-sm">

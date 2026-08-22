@@ -333,6 +333,8 @@ export function DocumentScreen({
   printTerms,
   convertActions,
   autoOpenCreate,
+  autoOpenDetailId,
+  relatedDocuments,
 }: {
   title: string;
   description: string;
@@ -420,6 +422,19 @@ export function DocumentScreen({
   /** "Create X from this document" shortcuts (e.g. an Approved MR's "Create Purchase Order" button) shown in the detail view's action row, next to the lifecycle buttons - see ConvertAction. Omit for a document type with nothing downstream to convert into. */
   convertActions?: ConvertAction[];
   /**
+   * Renders a "Related Documents" panel in the detail view, between the
+   * created-by/approved-by info strip and the Line Items grid - given the
+   * full fetched record (same one everything else in the detail view
+   * reads from), so the caller can link out to whatever this document was
+   * created from or has spawned (e.g. a PO's source Material Request(s),
+   * the GRNs raised against it, and any Purchase Invoice(s) that settled
+   * those GRNs). Each document screen knows its own one-hop relations;
+   * chaining across screens (MR -> PO -> GRN -> PI and back) is what lets
+   * the whole procurement trail be navigated end to end. Omit for a
+   * document type with nothing to link (e.g. RFQ).
+   */
+  relatedDocuments?: (detail: any) => any;
+  /**
    * When true, opens straight into a blank create form the moment this
    * screen mounts, instead of the usual list view - used by a screen
    * that's just been navigated to via a ConvertAction's onClick (e.g.
@@ -430,6 +445,16 @@ export function DocumentScreen({
    * Only evaluated once, on mount.
    */
   autoOpenCreate?: boolean;
+  /**
+   * Opens straight into an existing document's detail view the moment this
+   * screen mounts, instead of the usual list view - used when navigating in
+   * from another document's "Related Documents" panel (e.g. clicking a
+   * GRN's linked Purchase Invoice jumps straight to that invoice's detail
+   * page, not the Purchase Invoices list). Same router-state convention as
+   * autoOpenCreate: the caller computes this from its own location.state,
+   * DocumentScreen just knows an id to open. Only evaluated once, on mount.
+   */
+  autoOpenDetailId?: string;
 }) {
   const [view, setView] = useState<"list" | "form" | "detail">("list");
   const [rows, setRows] = useState<any[]>([]);
@@ -480,6 +505,13 @@ export function DocumentScreen({
     // Mount-once: fires only when this screen first loads via a
     // ConvertAction navigation, not on every re-render while the flag
     // happens to still be true.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    if (autoOpenDetailId) openDetail(autoOpenDetailId);
+    // Mount-once, same convention as autoOpenCreate above - fires only when
+    // this screen first loads via a Related Documents link navigation.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -1387,6 +1419,8 @@ export function DocumentScreen({
                   )}
                 </div>
               )}
+
+              {relatedDocuments && relatedDocuments(detail)}
 
               <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
                 <div className="mb-3 border-b border-gray-100 pb-2 text-[11px] font-semibold uppercase tracking-wide text-brand-700">Line Items</div>

@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useLocation } from "react-router-dom";
 import { DocumentScreen } from "../../components/DocumentScreen";
+import { RelatedDocuments } from "../../components/RelatedDocuments";
 import { SearchableSelect } from "../../components/SearchableSelect";
 import { useOptions } from "../../lib/useOptions";
 import { api, type ListResponse } from "../../lib/apiClient";
@@ -360,6 +361,27 @@ export default function PurchaseInvoices() {
         { key: "additionalCosts", label: "Additional Costs", type: "text", hidden: true },
       ]}
       autoOpenCreate={!!seedGrnId}
+      autoOpenDetailId={(location.state as any)?.openId}
+      relatedDocuments={(detail) => {
+        const grnIds = new Set<string>();
+        const grnItems = (detail.grns ?? [])
+          .map((bridge: any) => bridge.grn)
+          .filter((g: any) => g && !grnIds.has(g.id) && grnIds.add(g.id))
+          .map((g: any) => ({ id: g.id, label: g.grnNo, to: "/procurement/grns", status: g.status }));
+        const poIds = new Set<string>();
+        const poItems = (detail.grns ?? [])
+          .map((bridge: any) => bridge.grn?.po)
+          .filter((po: any) => po && !poIds.has(po.id) && poIds.add(po.id))
+          .map((po: any) => ({ id: po.id, label: po.poNo, to: "/procurement/purchase-orders" }));
+        return (
+          <RelatedDocuments
+            groups={[
+              { label: "Linked GRNs", items: grnItems },
+              { label: "Source Purchase Orders", items: poItems },
+            ]}
+          />
+        );
+      }}
       linesExtra={({ header, lines, addLines, setHeaderFields }) => {
         const linesValue = lines.reduce((sum: number, l: any) => sum + Number(l.lineTotal || 0), 0);
         const invoiceCosts = (header.additionalCosts ?? []).reduce((s: number, c: any) => s + Number(c.amount), 0);
